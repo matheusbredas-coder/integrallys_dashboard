@@ -38,13 +38,14 @@ export function Sidebar({ email }: { email: string }) {
       </nav>
       <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: 12,
         padding: "14px 12px", borderTop: "1px solid var(--line)" }}>
-        <div style={{ width: 40, height: 40, borderRadius: "50%",
+        <div style={{ width: 40, height: 40, borderRadius: "50%", flex: "none",
           background: "linear-gradient(135deg,#f3d886,#c79a3e)" }} />
-        <div>
-          <div style={{ fontSize: 13.5, fontWeight: 700 }}>{email}</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, overflow: "hidden",
+            textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={email}>{email}</div>
           <div className="muted" style={{ fontSize: 11.5 }}>Admin</div>
         </div>
-        <form action={signOut} style={{ marginLeft: "auto" }}>
+        <form action={signOut} style={{ flex: "none" }}>
           <button type="submit" title="Sign out"
             style={{ background: "transparent", border: "1px solid var(--line)", color: "var(--muted)",
               borderRadius: 10, padding: "6px 10px", cursor: "pointer", fontSize: 12 }}>
