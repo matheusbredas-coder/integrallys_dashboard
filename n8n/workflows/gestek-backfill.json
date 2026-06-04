@@ -1,0 +1,91 @@
+{
+  "name": "Gestek - Backfill",
+  "nodes": [
+    {
+      "id": "bf000001-0001-0001-0001-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 340],
+      "parameters": {}
+    },
+
+    {
+      "id": "bf000001-0002-0002-0002-000000000002",
+      "name": "Set Backfill Mode",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 340],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-trigger",
+              "name": "trigger",
+              "value": "backfill",
+              "type": "string"
+            },
+            {
+              "id": "assign-mode",
+              "name": "mode",
+              "value": "backfill",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+
+    {
+      "id": "bf000001-0003-0003-0003-000000000003",
+      "name": "Execute Core Workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [680, 340],
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Gestek - Core"
+        },
+        "source": "passedData",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "trigger": "={{ $json.trigger }}",
+            "mode":    "={{ $json.mode }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    }
+  ],
+
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [{ "node": "Set Backfill Mode", "type": "main", "index": 0 }]
+      ]
+    },
+    "Set Backfill Mode": {
+      "main": [
+        [{ "node": "Execute Core Workflow", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  },
+  "staticData": null
+}

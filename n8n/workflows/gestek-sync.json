@@ -1,0 +1,147 @@
+{
+  "name": "Gestek - Sync",
+  "nodes": [
+    {
+      "id": "sy000001-0001-0001-0001-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 240],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gestek-sync",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WEBHOOK_SECRET_CRED_ID",
+          "name": "Sync Webhook Secret"
+        }
+      },
+      "webhookId": "gestek-sync-webhook"
+    },
+
+    {
+      "id": "sy000001-0002-0002-0002-000000000002",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 440],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 1 * *"
+            }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "sy000001-0003-0003-0003-000000000003",
+      "name": "Set Sync Mode",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 340],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-trigger",
+              "name": "trigger",
+              "value": "={{ $('Webhook').isExecuted ? 'webhook' : 'cron' }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-mode",
+              "name": "mode",
+              "value": "sync",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+
+    {
+      "id": "sy000001-0004-0004-0004-000000000004",
+      "name": "Execute Core Workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [680, 340],
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Gestek - Core"
+        },
+        "source": "passedData",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "trigger": "={{ $json.trigger }}",
+            "mode":    "={{ $json.mode }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+
+    {
+      "id": "sy000001-0005-0005-0005-000000000005",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [900, 240],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.summary }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Set Sync Mode", "type": "main", "index": 0 }]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [{ "node": "Set Sync Mode", "type": "main", "index": 0 }]
+      ]
+    },
+    "Set Sync Mode": {
+      "main": [
+        [{ "node": "Execute Core Workflow", "type": "main", "index": 0 }]
+      ]
+    },
+    "Execute Core Workflow": {
+      "main": [
+        [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  },
+  "staticData": null
+}

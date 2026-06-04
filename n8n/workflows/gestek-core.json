@@ -1,0 +1,569 @@
+{
+  "name": "Gestek - Core",
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 340],
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "trigger", "type": "string" },
+            { "name": "mode",    "type": "string" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "name": "Init Run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 340],
+      "parameters": {
+        "jsCode": "function uuidv4() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {\n    const r = (Math.random() * 16) | 0;\n    const v = c === 'x' ? r : (r & 0x3) | 0x8;\n    return v.toString(16);\n  });\n}\n\nconst trigger = $json.trigger || 'backfill';\nconst mode = $json.mode || (trigger === 'backfill' ? 'backfill' : 'sync');\n\nreturn [\n  {\n    json: {\n      run_id: uuidv4(),\n      started_at: new Date().toISOString(),\n      trigger,\n      mode,\n    },\n  },\n];"
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "name": "Insert Sync Log (started)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 340],
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_SUPABASE_REF.supabase.co/rest/v1/gestek_sync_logs",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer YOUR_SERVICE_ROLE_KEY" },
+            { "name": "Content-Type",  "value": "application/json" },
+            { "name": "Prefer",        "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  run_id:     $('Init Run').first().json.run_id,\n  started_at: $('Init Run').first().json.started_at,\n  trigger:    $('Init Run').first().json.trigger,\n  mode:       $('Init Run').first().json.mode\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase - service role"
+        }
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0004-0004-0004-000000000004",
+      "name": "Fetch Clientes Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 340],
+      "parameters": {
+        "method": "GET",
+        "url": "https://apipublica.gestek.com.br/api/clientes",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "Limit", "value": "100" }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "paginationMode": "updateAParameterInEachRequest",
+            "nextURL": "",
+            "parameters": {
+              "parameters": [
+                {
+                  "type": "query",
+                  "name": "Page",
+                  "value": "={{ $pageCount }}"
+                }
+              ]
+            },
+            "paginationCompleteWhen": "customExpression",
+            "completeExpression": "={{ $response.body[0].clientes.length < 100 }}",
+            "limitPagesFetched": true,
+            "maxRequests": 50
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "GESTEK_CRED_ID",
+          "name": "Gestek API - Bearer"
+        }
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0005-0005-0005-000000000005",
+      "name": "Build Clientes Map",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 340],
+      "parameters": {
+        "jsCode": "const normalize = (s) =>\n  (s || '')\n    .trim()\n    .replace(/\\s+/g, ' ')\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .toLowerCase();\n\nconst idMap = {};\nconst nameToId = {};\nconst duplicates = [];\n\nfor (const item of $input.all()) {\n  let payload = item.json;\n  if (Array.isArray(payload)) payload = payload[0];\n\n  const clientes = (payload && payload.clientes) || [];\n  for (const c of clientes) {\n    if (!c.id) continue;\n\n    idMap[c.id] = {\n      nome: c.nome,\n      dataCriacao: c.dataCriacao,\n    };\n\n    const key = normalize(c.nome);\n    if (!key) continue;\n\n    if (nameToId[key] && nameToId[key] !== c.id) {\n      duplicates.push({\n        level: 'warn',\n        message: `Duplicate normalized name \"${key}\" — kept ${nameToId[key]}, ignored ${c.id} (${c.nome})`,\n      });\n    } else {\n      nameToId[key] = c.id;\n    }\n  }\n}\n\nreturn [\n  {\n    json: {\n      idMap,\n      nameToId,\n      duplicates,\n      totalClientes: Object.keys(idMap).length,\n    },\n  },\n];"
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0006-0006-0006-000000000006",
+      "name": "Read Supabase Patients",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 340],
+      "parameters": {
+        "method": "GET",
+        "url": "https://YOUR_SUPABASE_REF.supabase.co/rest/v1/Clientes",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer YOUR_SERVICE_ROLE_KEY" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "select", "value": "id,Nome,Data do Cadastro" }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase - service role"
+        }
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0007-0007-0007-000000000007",
+      "name": "Split Patients",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 340],
+      "parameters": {
+        "jsCode": "const clientesData = $('Build Clientes Map').first().json;\nconst { idMap, duplicates } = clientesData;\n\nconst supabasePatients = $('Read Supabase Patients').all().map((i) => i.json);\n\nconst supabaseIdSet = new Set();\nconst orphanSupabasePatients = [];\n\nfor (const p of supabasePatients) {\n  if (!p.id) continue;\n  supabaseIdSet.add(p.id);\n  if (!idMap[p.id]) {\n    orphanSupabasePatients.push({ id: p.id, Nome: p.Nome });\n  }\n}\n\nconst newGestekClients = [];\nfor (const [id, info] of Object.entries(idMap)) {\n  if (!supabaseIdSet.has(id)) {\n    newGestekClients.push({\n      id,\n      nome: info.nome,\n      dataCriacao: info.dataCriacao,\n    });\n  }\n}\n\nreturn [\n  {\n    json: {\n      existingIds: Array.from(supabaseIdSet),\n      newGestekClients,\n      orphanSupabasePatients,\n      duplicates: duplicates || [],\n    },\n  },\n];"
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0008-0008-0008-000000000008",
+      "name": "IF mode === sync",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 340],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-mode-sync",
+              "leftValue": "={{ $('Init Run').first().json.mode }}",
+              "rightValue": "sync",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0009-0009-0009-000000000009",
+      "name": "IF Has New Patients",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2000, 200],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-new",
+              "leftValue": "={{ $('Split Patients').first().json.newGestekClients.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0010-0010-0010-000000000010",
+      "name": "Insert New Patients",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_SUPABASE_REF.supabase.co/rest/v1/Clientes",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer YOUR_SERVICE_ROLE_KEY" },
+            { "name": "Content-Type",  "value": "application/json" },
+            { "name": "Prefer",        "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(\n  $('Split Patients').first().json.newGestekClients.map(c => {\n    const d = new Date(c.dataCriacao);\n    const brt = new Date(d.getTime() - 3 * 60 * 60 * 1000);\n    const pad = n => String(n).padStart(2, '0');\n    const cadastro = `${pad(brt.getUTCDate())}/${pad(brt.getUTCMonth()+1)}/${pad(brt.getUTCFullYear()%100)} ${pad(brt.getUTCHours())}:${pad(brt.getUTCMinutes())}`;\n    return {\n      id: c.id,\n      Nome: c.nome,\n      'Data do Cadastro': cadastro\n    };\n  })\n) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase - service role"
+        }
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0011-0011-0011-000000000011",
+      "name": "Generate Monthly Windows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 340],
+      "parameters": {
+        "jsCode": "function parseBRDate(s) {\n  const m = (s || '').match(/^(\\d{2})\\/(\\d{2})\\/(\\d{2})\\s+(\\d{2}):(\\d{2})$/);\n  if (!m) return null;\n  const [, dd, mm, yy, hh, mi] = m;\n  return new Date(\n    Date.UTC(\n      2000 + parseInt(yy, 10),\n      parseInt(mm, 10) - 1,\n      parseInt(dd, 10),\n      parseInt(hh, 10) + 3, // BRT → UTC\n      parseInt(mi, 10)\n    )\n  );\n}\n\nconst patients = $('Read Supabase Patients').all().map((i) => i.json);\n\nconst dateNums = patients\n  .map((p) => parseBRDate(p['Data do Cadastro']))\n  .filter((d) => d instanceof Date && !Number.isNaN(d.getTime()))\n  .map((d) => d.getTime());\n\nif (dateNums.length === 0) {\n  throw new Error(\n    'No patients with parseable \"Data do Cadastro\" found in Clientes — cannot determine backfill start.'\n  );\n}\n\nconst minDate = new Date(Math.min(...dateNums));\nconst today = new Date();\n\nconst cursor = new Date(\n  Date.UTC(minDate.getUTCFullYear(), minDate.getUTCMonth(), 1, 0, 0, 0, 0)\n);\nconst stopAt = new Date(\n  Date.UTC(\n    today.getUTCFullYear(),\n    today.getUTCMonth(),\n    today.getUTCDate(),\n    23,\n    59,\n    59,\n    999\n  )\n);\n\nconst out = [];\nwhile (cursor.getTime() <= stopAt.getTime()) {\n  const start = new Date(cursor);\n  const lastDayOfMonth = new Date(\n    Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999)\n  );\n  const end = lastDayOfMonth.getTime() > stopAt.getTime() ? stopAt : lastDayOfMonth;\n\n  out.push({\n    json: {\n      start: start.toISOString(),\n      end: end.toISOString(),\n      label: `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}`,\n    },\n  });\n\n  cursor.setUTCMonth(cursor.getUTCMonth() + 1);\n}\n\nreturn out;"
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0012-0012-0012-000000000012",
+      "name": "Loop Windows",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [2660, 340],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0013-0013-0013-000000000013",
+      "name": "Fetch Vendas Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2880, 340],
+      "parameters": {
+        "method": "GET",
+        "url": "https://apipublica.gestek.com.br/api/vendas",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "DataInicio", "value": "={{ $json.start }}" },
+            { "name": "DataFim",    "value": "={{ $json.end }}" },
+            { "name": "Status",     "value": "1" },
+            { "name": "Limit",      "value": "100" }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "paginationMode": "updateAParameterInEachRequest",
+            "nextURL": "",
+            "parameters": {
+              "parameters": [
+                {
+                  "type": "query",
+                  "name": "Page",
+                  "value": "={{ $pageCount }}"
+                }
+              ]
+            },
+            "paginationCompleteWhen": "customExpression",
+            "completeExpression": "={{ $response.body[0].vendas.length < 100 }}",
+            "limitPagesFetched": true,
+            "maxRequests": 50
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "GESTEK_CRED_ID",
+          "name": "Gestek API - Bearer"
+        }
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0014-0014-0014-000000000014",
+      "name": "Wait 250ms",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [3100, 340],
+      "parameters": {
+        "resume": "timeInterval",
+        "unit": "seconds",
+        "amount": 0.25
+      },
+      "webhookId": "wait-webhook-placeholder"
+    },
+
+    {
+      "id": "a1b2c3d4-0015-0015-0015-000000000015",
+      "name": "Aggregate Sales",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 560],
+      "parameters": {
+        "jsCode": "const accumulator = {};\nlet totalSalesAggregated = 0;\n\nfor (const item of $input.all()) {\n  let payload = item.json;\n  if (Array.isArray(payload)) payload = payload[0];\n\n  const vendas = (payload && payload.vendas) || [];\n  for (const venda of vendas) {\n    if (venda.status !== 1) continue;\n    if (!venda.clienteId) continue;\n\n    const id = venda.clienteId;\n    if (!accumulator[id]) {\n      accumulator[id] = {\n        nome: venda.cliente || null,\n        vendas: 0,\n        receita: 0,\n        descontos: 0,\n        procedimentos: {},\n      };\n    }\n    const acc = accumulator[id];\n    acc.vendas += 1;\n    acc.receita += Number(venda.total) || 0;\n    acc.descontos += Number(venda.desconto) || 0;\n\n    for (const it of venda.itens || []) {\n      const name = it.nome;\n      const qty = Number(it.quantidade) || 0;\n      if (!name) continue;\n      acc.procedimentos[name] = (acc.procedimentos[name] || 0) + qty;\n    }\n\n    totalSalesAggregated += 1;\n  }\n}\n\nreturn [\n  {\n    json: {\n      accumulator,\n      totalSalesAggregated,\n    },\n  },\n];"
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0016-0016-0016-000000000016",
+      "name": "Build Update Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 560],
+      "parameters": {
+        "jsCode": "const { accumulator } = $('Aggregate Sales').first().json;\nconst { existingIds, newGestekClients } = $('Split Patients').first().json;\n\nconst knownIds = new Set([\n  ...existingIds,\n  ...newGestekClients.map((c) => c.id),\n]);\n\nconst money = (n) => (Math.round(n * 100) / 100).toFixed(2);\nconst count = (n) => String(n);\n\nconst rpcPayload = [];\nconst unmatchedSales = [];\n\nfor (const [id, agg] of Object.entries(accumulator)) {\n  if (!knownIds.has(id)) {\n    unmatchedSales.push({ clienteId: id, sale_count: agg.vendas });\n    continue;\n  }\n\n  const procedimentos = Object.entries(agg.procedimentos)\n    .sort((a, b) => b[1] - a[1])\n    .map(([nome, qty]) => `${nome} (${qty})`)\n    .join(', ');\n\n  rpcPayload.push({\n    id,\n    procedimentos: procedimentos || null,\n    numero_de_vendas: count(agg.vendas),\n    receita_total: money(agg.receita),\n    descontos: money(agg.descontos),\n    ticket_medio: agg.vendas > 0 ? money(agg.receita / agg.vendas) : null,\n  });\n}\n\nreturn [\n  {\n    json: {\n      rpcPayload,\n      unmatchedSales,\n      rowCount: rpcPayload.length,\n    },\n  },\n];"
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0017-0017-0017-000000000017",
+      "name": "Bulk Update Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3100, 560],
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_SUPABASE_REF.supabase.co/rest/v1/rpc/bulk_update_patient_metrics",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer YOUR_SERVICE_ROLE_KEY" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ payload: $('Build Update Payload').first().json.rpcPayload }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase - service role"
+        }
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0018-0018-0018-000000000018",
+      "name": "Build Run Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3320, 560],
+      "parameters": {
+        "jsCode": "const init = $('Init Run').first().json;\nconst split = $('Split Patients').first().json;\nconst aggregate = $('Aggregate Sales').first().json;\nconst payload = $('Build Update Payload').first().json;\nconst windowCount = $('Generate Monthly Windows').all().length;\n\nconst completed_at = new Date().toISOString();\n\nconst summary = {\n  run_id: init.run_id,\n  started_at: init.started_at,\n  completed_at,\n  trigger: init.trigger,\n  mode: init.mode,\n  patients_updated: payload.rowCount,\n  new_patients_inserted: init.mode === 'sync' ? split.newGestekClients.length : 0,\n  unmatched_sales: payload.unmatchedSales.length,\n  duplicate_name_warnings: (split.duplicates || []).length,\n  orphan_supabase_patients: split.orphanSupabasePatients.length,\n  monthly_windows_processed: windowCount,\n  total_sales_aggregated: aggregate.totalSalesAggregated,\n};\n\nconst warnings = [\n  ...(split.duplicates || []),\n  ...split.orphanSupabasePatients.map((p) => ({\n    level: 'warn',\n    message: `Supabase patient \"${p.Nome}\" (id=${p.id}) has no matching Gestek client — Gestek may have deleted them`,\n  })),\n  ...payload.unmatchedSales.map((s) => ({\n    level: 'warn',\n    message: `Sales for unknown clienteId ${s.clienteId} (${s.sale_count} sales)`,\n  })),\n];\n\nreturn [{ json: { summary, warnings, completed_at } }];"
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0019-0019-0019-000000000019",
+      "name": "Update Sync Log (completed)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3540, 560],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://YOUR_SUPABASE_REF.supabase.co/rest/v1/gestek_sync_logs?run_id=eq.' + $('Init Run').first().json.run_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer YOUR_SERVICE_ROLE_KEY" },
+            { "name": "Content-Type",  "value": "application/json" },
+            { "name": "Prefer",        "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  completed_at: $('Build Run Summary').first().json.completed_at,\n  summary:      $('Build Run Summary').first().json.summary,\n  warnings:     $('Build Run Summary').first().json.warnings\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CRED_ID",
+          "name": "Supabase - service role"
+        }
+      }
+    },
+
+    {
+      "id": "a1b2c3d4-0020-0020-0020-000000000020",
+      "name": "Set Summary as Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [3760, 560],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-summary",
+              "name": "summary",
+              "value": "={{ $('Build Run Summary').first().json.summary }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [{ "node": "Init Run", "type": "main", "index": 0 }]
+      ]
+    },
+    "Init Run": {
+      "main": [
+        [{ "node": "Insert Sync Log (started)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Insert Sync Log (started)": {
+      "main": [
+        [{ "node": "Fetch Clientes Page", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch Clientes Page": {
+      "main": [
+        [{ "node": "Build Clientes Map", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Clientes Map": {
+      "main": [
+        [{ "node": "Read Supabase Patients", "type": "main", "index": 0 }]
+      ]
+    },
+    "Read Supabase Patients": {
+      "main": [
+        [{ "node": "Split Patients", "type": "main", "index": 0 }]
+      ]
+    },
+    "Split Patients": {
+      "main": [
+        [{ "node": "IF mode === sync", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF mode === sync": {
+      "main": [
+        [{ "node": "IF Has New Patients", "type": "main", "index": 0 }],
+        [{ "node": "Generate Monthly Windows", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF Has New Patients": {
+      "main": [
+        [{ "node": "Insert New Patients", "type": "main", "index": 0 }],
+        [{ "node": "Generate Monthly Windows", "type": "main", "index": 0 }]
+      ]
+    },
+    "Insert New Patients": {
+      "main": [
+        [{ "node": "Generate Monthly Windows", "type": "main", "index": 0 }]
+      ]
+    },
+    "Generate Monthly Windows": {
+      "main": [
+        [{ "node": "Loop Windows", "type": "main", "index": 0 }]
+      ]
+    },
+    "Loop Windows": {
+      "main": [
+        [{ "node": "Fetch Vendas Page", "type": "main", "index": 0 }],
+        [{ "node": "Aggregate Sales", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch Vendas Page": {
+      "main": [
+        [{ "node": "Wait 250ms", "type": "main", "index": 0 }]
+      ]
+    },
+    "Wait 250ms": {
+      "main": [
+        [{ "node": "Loop Windows", "type": "main", "index": 0 }]
+      ]
+    },
+    "Aggregate Sales": {
+      "main": [
+        [{ "node": "Build Update Payload", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Update Payload": {
+      "main": [
+        [{ "node": "Bulk Update Supabase", "type": "main", "index": 0 }]
+      ]
+    },
+    "Bulk Update Supabase": {
+      "main": [
+        [{ "node": "Build Run Summary", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Run Summary": {
+      "main": [
+        [{ "node": "Update Sync Log (completed)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Update Sync Log (completed)": {
+      "main": [
+        [{ "node": "Set Summary as Output", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null
+}
