@@ -12,8 +12,9 @@ select
   nullif(trim(c."Descontos"), '')::numeric           as descontos,
   nullif(trim(c."Ticket Medio"), '')::numeric        as ticket_medio,
   c."Data do Cadastro"   as cadastro_raw,
-  to_timestamp(nullif(trim(c."Data do Cadastro"), ''), 'DD/MM/YY HH24:MI') as cadastro_at,
-  c.gestek_id
+  to_timestamp(nullif(trim(c."Data do Cadastro"), ''), 'DD/MM/YY HH24:MI') as cadastro_at
 from public."Clientes" c;
+-- Note: gestek_id is intentionally omitted — that column only exists after running
+-- backfill_gestek_id.sql. To include it later, append `, c.gestek_id` to the select.
 
 grant select on public.clientes_view to anon, authenticated, service_role;
