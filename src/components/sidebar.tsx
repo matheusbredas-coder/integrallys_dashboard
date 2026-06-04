@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut } from "@/app/(app)/signout/actions";
 
 const ITEMS = [
   { href: "/", label: "Overview" },
@@ -43,6 +44,13 @@ export function Sidebar({ email }: { email: string }) {
           <div style={{ fontSize: 13.5, fontWeight: 700 }}>{email}</div>
           <div className="muted" style={{ fontSize: 11.5 }}>Admin</div>
         </div>
+        <form action={signOut} style={{ marginLeft: "auto" }}>
+          <button type="submit" title="Sign out"
+            style={{ background: "transparent", border: "1px solid var(--line)", color: "var(--muted)",
+              borderRadius: 10, padding: "6px 10px", cursor: "pointer", fontSize: 12 }}>
+            ⎋
+          </button>
+        </form>
       </div>
     </aside>
   );
