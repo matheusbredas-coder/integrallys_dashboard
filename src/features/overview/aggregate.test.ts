@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeOverview } from "./aggregate";
-import type { VendaRow, ClienteRow, Goals } from "./types";
+import type { VendaRow, ClienteRow, Goals, AgendaRow } from "./types";
 
 const goals: Goals = { monthly_revenue_goal: 1000, monthly_new_patient_goal: 4, avg_ticket_goal: 100 };
 const vendas: VendaRow[] = [
@@ -38,5 +38,22 @@ describe("computeOverview", () => {
   it("top procedures + recent (most-recent first)", () => {
     expect(d.topProcedures[0]).toEqual({ name: "MONJAURO 2,5 MG", qty: 2 });
     expect(d.recent[0].patient).toBe("BIA");
+  });
+});
+
+describe("computeOverview atendimentos", () => {
+  it("counts only pendente === false across all agenda rows", () => {
+    const agenda: AgendaRow[] = [
+      { appointment_at: "2026-06-01T12:00:00Z", pendente: false },
+      { appointment_at: "2026-06-02T12:00:00Z", pendente: false },
+      { appointment_at: "2026-06-03T12:00:00Z", pendente: true },
+    ];
+    const out = computeOverview([], [], goals, NOW, agenda);
+    expect(out.kpi.atendimentos).toBe(2);
+  });
+
+  it("defaults atendimentos to 0 when agenda is omitted", () => {
+    const out = computeOverview([], [], goals, NOW);
+    expect(out.kpi.atendimentos).toBe(0);
   });
 });
