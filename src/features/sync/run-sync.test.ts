@@ -63,6 +63,34 @@ describe("runGestekSync", () => {
     expect(inserted).toHaveLength(0);
   });
 
+  it("upserts agenda rows and reports agenda_upserted", async () => {
+    const { store, agenda } = makeStore(existing);
+    const clientes = existing.map((p) => ({ id: p.gestek_id!, nome: p.Nome }));
+    const agendaItems: GestekAgenda[] = [
+      { id: "a1", dataAgendamentoInicio: "2026-06-01T12:00:00Z", pendente: false, clienteNome: "ANA" },
+      { id: "a2", dataAgendamentoInicio: "2026-06-02T12:00:00Z", pendente: true, clienteNome: "BIA" },
+    ];
+    const r = await runGestekSync(
+      { dryRun: false },
+      { store, gestek: gestek(clientes, [], agendaItems), now: () => new Date("2026-06-04T00:00:00Z") },
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.summary?.agenda_upserted).toBe(2);
+    expect(agenda).toHaveLength(2);
+  });
+
+  it("dry-run does not upsert agenda", async () => {
+    const { store, agenda } = makeStore(existing);
+    const clientes = existing.map((p) => ({ id: p.gestek_id!, nome: p.Nome }));
+    const agendaItems: GestekAgenda[] = [{ id: "a1", dataAgendamentoInicio: "2026-06-01T12:00:00Z", pendente: false }];
+    const r = await runGestekSync(
+      { dryRun: true },
+      { store, gestek: gestek(clientes, [], agendaItems), now: () => new Date("2026-06-04T00:00:00Z") },
+    );
+    expect(r.ok).toBe(true);
+    expect(agenda).toHaveLength(0);
+  });
+
   it("guard trips on an implausible number of new patients (writes nothing)", async () => {
     const { store, inserted } = makeStore(existing);
     // every Gestek client looks new (none match existing gestek_id) -> 100 new

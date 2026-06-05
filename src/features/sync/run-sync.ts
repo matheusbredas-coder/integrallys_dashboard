@@ -1,15 +1,17 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import type { GestekCliente, GestekVenda, NewPatientRow, SyncResult, SyncSummary, SyncWarning } from "./types";
+import type { GestekAgenda, GestekAgendaRow, GestekCliente, GestekVenda, NewPatientRow, SyncResult, SyncSummary, SyncWarning } from "./types";
 import type { SyncStore } from "./store";
 import { splitPatients, normalizeName } from "./match";
 import { mapVendaToRow } from "./sales";
+import { mapAgendaToRow } from "./agenda";
 import { createSyncStore } from "./store";
-import { fetchAllClientes, fetchAllVendas } from "./gestek-client";
+import { fetchAllClientes, fetchAllVendas, fetchAllAgenda } from "./gestek-client";
 
 export type GestekApi = {
   fetchAllClientes: () => Promise<GestekCliente[]>;
   fetchAllVendas: (startISO: string) => Promise<GestekVenda[]>;
+  fetchAllAgenda: (startISO: string) => Promise<GestekAgenda[]>;
 };
 export type RunDeps = { store: SyncStore; gestek: GestekApi; now?: () => Date };
 
@@ -23,7 +25,11 @@ function fmtCadastro(dataCriacao?: string): string {
 
 export async function runGestekSync(opts: { dryRun?: boolean }, deps?: RunDeps): Promise<SyncResult> {
   const store = deps?.store ?? createSyncStore();
-  const gestek = deps?.gestek ?? { fetchAllClientes, fetchAllVendas: (s: string) => fetchAllVendas(s) };
+  const gestek = deps?.gestek ?? {
+    fetchAllClientes,
+    fetchAllVendas: (s: string) => fetchAllVendas(s),
+    fetchAllAgenda: (s: string) => fetchAllAgenda(s),
+  };
   const now = deps?.now ?? (() => new Date());
   const dryRun = !!opts.dryRun;
 
@@ -89,15 +95,29 @@ export async function runGestekSync(opts: { dryRun?: boolean }, deps?: RunDeps):
   }
   const vendaRows = vendas.filter((v) => v.id).map((v) => mapVendaToRow(v, idMap, split.supabaseNameToId));
 
+  // Agenda (Atendimentos). Full history is cheap to keep idempotent via upsert-by-id.
+  // Default start = agenda adoption (~2025-06); override with GESTEK_AGENDA_SYNC_FROM.
+  const agendaStart = process.env.GESTEK_AGENDA_SYNC_FROM || "2025-06-01";
+  let agenda: GestekAgenda[];
+  try {
+    agenda = await gestek.fetchAllAgenda(agendaStart);
+  } catch (e) {
+    if (!dryRun) await store.logError(run_id, now().toISOString(), e instanceof Error ? e.message : "falha ao buscar agenda");
+    return { ok: false, code: "gestek_error", message: e instanceof Error ? e.message : "Falha ao buscar agenda do Gestek." };
+  }
+  const agendaRows: GestekAgendaRow[] = agenda.filter((a) => a.id).map(mapAgendaToRow);
+
   if (!dryRun) {
     await store.insertPatients(newRows);
     await store.upsertVendas(vendaRows);
+    await store.upsertAgenda(agendaRows);
   }
 
   const completed_at = now().toISOString();
   const summary: SyncSummary = {
     run_id, mode: "sync", dryRun, started_at, completed_at,
     total_clientes: clientes.length, patients_inserted: newRows.length, vendas_upserted: vendaRows.length,
+    agenda_upserted: agendaRows.length,
     orphan_supabase_patients: split.orphans.length, duplicate_name_warnings: warnings.length,
   };
   if (!dryRun) await store.logComplete(run_id, completed_at, summary, warnings);
