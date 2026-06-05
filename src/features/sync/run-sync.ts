@@ -60,8 +60,13 @@ export async function runGestekSync(opts: { dryRun?: boolean }, deps?: RunDeps):
   const idMap: Record<string, string> = { ...split.gestekIdToSupabaseId };
   for (const r of newRows) idMap[r.gestek_id] = r.id;
 
-  // Fetch ALL Gestek data before any write, so a fetch error never leaves partial data.
-  const startISO = process.env.GESTEK_SYNC_START_DATE || "2024-01-01";
+  // Fetch Gestek data before any write, so a fetch error never leaves partial data.
+  // Only the recent N months of vendas (historical sales already live in gestek_vendas);
+  // keeps us well under the Gestek rate limit. Idempotent upsert merges them in.
+  const months = Math.max(1, Number(process.env.GESTEK_SYNC_MONTHS || 3));
+  const sd = new Date(now());
+  sd.setUTCMonth(sd.getUTCMonth() - (months - 1));
+  const startISO = `${sd.getUTCFullYear()}-${String(sd.getUTCMonth() + 1).padStart(2, "0")}-01`;
   let vendas: GestekVenda[];
   try {
     vendas = await gestek.fetchAllVendas(startISO);
