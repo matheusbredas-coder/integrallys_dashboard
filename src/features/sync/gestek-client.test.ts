@@ -17,6 +17,7 @@ describe("fetchAllClientes", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toContain("/api/clientes");
+    expect(String(url)).toContain("Page=0"); // Gestek pagination is 0-indexed
     expect((init as RequestInit).headers).toMatchObject({ Authorization: "Bearer tok" });
   });
   it("throws on non-2xx", async () => {

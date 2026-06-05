@@ -32,7 +32,8 @@ async function fetchWithRetry(url: string, fetchImpl: typeof fetch, tries = 5): 
 
 async function fetchPaged<T>(path: string, key: string, extraQuery: Record<string, string>, fetchImpl: typeof fetch): Promise<T[]> {
   const out: T[] = [];
-  for (let pageN = 1; pageN <= MAX_PAGES; pageN++) {
+  // Gestek pagination is 0-indexed: Page=0 is the first page.
+  for (let pageN = 0; pageN < MAX_PAGES; pageN++) {
     const qs = new URLSearchParams({ Limit: String(PAGE_SIZE), Page: String(pageN), ...extraQuery });
     const res = await fetchWithRetry(`${BASE}${path}?${qs.toString()}`, fetchImpl);
     if (!res.ok) throw new Error(`Gestek ${path} returned ${res.status}`);
