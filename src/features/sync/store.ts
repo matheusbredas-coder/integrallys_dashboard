@@ -1,11 +1,12 @@
 import "server-only";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import type { SupabasePatient, NewPatientRow, GestekVendaRow, SyncSummary, SyncWarning } from "./types";
+import type { SupabasePatient, NewPatientRow, GestekVendaRow, GestekAgendaRow, SyncSummary, SyncWarning } from "./types";
 
 export type SyncStore = {
   readPatients(): Promise<SupabasePatient[]>;
   insertPatients(rows: NewPatientRow[]): Promise<void>;
   upsertVendas(rows: GestekVendaRow[]): Promise<void>;
+  upsertAgenda(rows: GestekAgendaRow[]): Promise<void>;
   logStart(meta: { run_id: string; started_at: string; trigger: string; mode: string }): Promise<void>;
   logComplete(run_id: string, completed_at: string, summary: SyncSummary, warnings: SyncWarning[]): Promise<void>;
   logError(run_id: string, completed_at: string, message: string): Promise<void>;
@@ -27,6 +28,12 @@ export function createSyncStore(): SyncStore {
     async upsertVendas(rows) {
       for (let i = 0; i < rows.length; i += 500) {
         const r = await sb.from("gestek_vendas").upsert(rows.slice(i, i + 500), { onConflict: "id" });
+        if (r.error) throw r.error;
+      }
+    },
+    async upsertAgenda(rows) {
+      for (let i = 0; i < rows.length; i += 500) {
+        const r = await sb.from("gestek_agenda").upsert(rows.slice(i, i + 500), { onConflict: "id" });
         if (r.error) throw r.error;
       }
     },

@@ -1,22 +1,25 @@
 import { describe, it, expect } from "vitest";
 import { runGestekSync } from "./run-sync";
 import type { SyncStore } from "./store";
-import type { GestekCliente, GestekVenda, SupabasePatient } from "./types";
+import type { GestekAgenda, GestekCliente, GestekVenda, SupabasePatient } from "./types";
 
 function makeStore(patients: SupabasePatient[]) {
   const inserted: unknown[] = [];
   const upserted: unknown[] = [];
+  const agenda: unknown[] = [];
   const store: SyncStore = {
     readPatients: async () => patients,
     insertPatients: async (rows) => { inserted.push(...rows); },
     upsertVendas: async (rows) => { upserted.push(...rows); },
+    upsertAgenda: async (rows) => { agenda.push(...rows); },
     logStart: async () => {}, logComplete: async () => {}, logError: async () => {},
   };
-  return { store, inserted, upserted };
+  return { store, inserted, upserted, agenda };
 }
-const gestek = (clientes: GestekCliente[], vendas: GestekVenda[]) => ({
+const gestek = (clientes: GestekCliente[], vendas: GestekVenda[], agenda: GestekAgenda[] = []) => ({
   fetchAllClientes: async () => clientes,
   fetchAllVendas: async () => vendas,
+  fetchAllAgenda: async () => agenda,
 });
 
 describe("runGestekSync", () => {
