@@ -3,6 +3,8 @@ import { ChatLauncher } from "@/features/chat/chat-launcher";
 import { RecentSales } from "@/features/overview/recent-sales";
 import { OverviewDashboard } from "@/features/overview/overview-dashboard";
 
+export const dynamic = "force-dynamic";
+
 export default async function OverviewPage() {
   const d = await getOverviewSource();
   return (

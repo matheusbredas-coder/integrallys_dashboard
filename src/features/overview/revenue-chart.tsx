@@ -6,7 +6,11 @@ import type { RevenuePoint } from "./types";
 
 export function RevenueChart({ data }: { data: RevenuePoint[] }) {
   const [chartData, setChartData] = useState<RevenuePoint[]>([]);
-  useEffect(() => { setChartData(data); }, [data]);
+  useEffect(() => {
+    setChartData([]);
+    const id = setTimeout(() => setChartData(data), 0);
+    return () => clearTimeout(id);
+  }, [data]);
 
   return (
     <div className="card" style={{ padding: 20 }}>
@@ -23,7 +27,7 @@ export function RevenueChart({ data }: { data: RevenuePoint[] }) {
           <YAxis stroke="#8c8c95" fontSize={11} tickFormatter={(v: number) => `${Math.round(v / 1000)}k`} />
           <Tooltip contentStyle={{ background: "#141416", border: "1px solid #26262b", borderRadius: 12 }} labelStyle={{ color: "#f5f5f6" }}
             formatter={(v: ValueType | undefined) => v == null ? "" : `R$ ${Math.round(Number(v)).toLocaleString("pt-BR")}`} />
-          <Bar dataKey="revenue" radius={[6, 6, 2, 2]} fill="url(#gold)" />
+          <Bar dataKey="revenue" radius={[6, 6, 2, 2]} fill="url(#gold)" isAnimationActive animationDuration={700} animationEasing="ease-out" />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
