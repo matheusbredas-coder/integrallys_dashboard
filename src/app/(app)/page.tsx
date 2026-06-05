@@ -1,31 +1,15 @@
-import { getOverviewData } from "@/features/overview/data";
+import { getOverviewSource } from "@/features/overview/data";
 import { ChatLauncher } from "@/features/chat/chat-launcher";
-import { SyncButton } from "@/features/sync/sync-button";
-import { KpiCards } from "@/features/overview/kpi-cards";
-import { Gauges } from "@/features/overview/gauges";
-import { RevenueChart } from "@/features/overview/revenue-chart";
 import { RecentSales } from "@/features/overview/recent-sales";
-import { TopProcedures } from "@/features/overview/top-procedures";
+import { OverviewDashboard } from "@/features/overview/overview-dashboard";
 
 export default async function OverviewPage() {
-  const d = await getOverviewData();
+  const d = await getOverviewSource();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ChatLauncher />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-.6px" }}>Olá, Matheus</h1>
-          <p className="muted" style={{ marginTop: 4 }}>Aqui está um resumo da sua clínica.</p>
-        </div>
-        <SyncButton enabled={process.env.SYNC_ENABLED === "true"} />
-      </div>
-      <KpiCards kpi={d.kpi} />
-      <Gauges gauges={d.gauges} />
-      <RevenueChart data={d.months} />
-      <div className="grid-2">
-        <RecentSales rows={d.recent} />
-        <TopProcedures rows={d.topProcedures} />
-      </div>
+      <OverviewDashboard source={d} syncEnabled={process.env.SYNC_ENABLED === "true"} />
+      <RecentSales rows={d.recent} />
     </div>
   );
 }

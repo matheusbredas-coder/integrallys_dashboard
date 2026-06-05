@@ -1,3 +1,4 @@
+"use client";
 import type { Gauge } from "./types";
 
 export function Gauges({ gauges }: { gauges: Gauge[] }) {
