@@ -9,7 +9,7 @@ select
   c."Email Principal"    as email,
   c."Origem"             as origem,
   c."Procedimentos"      as procedimentos_raw,
-  coalesce(v.numero_vendas, 0)                          as numero_vendas,
+  coalesce(v.numero_vendas, 0)::integer                 as numero_vendas,
   coalesce(v.receita_total, 0)::numeric                 as receita_total,
   coalesce(v.descontos, 0)::numeric                     as descontos,
   case when coalesce(v.numero_vendas,0) > 0
