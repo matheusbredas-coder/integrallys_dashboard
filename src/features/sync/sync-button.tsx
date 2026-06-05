@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import type { SyncResult, SyncSummary } from "./trigger";
+import type { SyncResult, SyncSummary } from "./types";
 
 type Phase = "idle" | "confirm" | "syncing" | "done" | "error";
 
@@ -68,7 +68,7 @@ export function SyncButton({ enabled = false }: { enabled?: boolean }) {
       {phase === "done" && (
         <div style={{ textAlign: "right", fontSize: 12.5 }}>
           <div style={{ color: "#7bd88f", fontWeight: 700 }}>
-            ✓ Synced — {fmt(summary?.patients_updated)} updated, {fmt(summary?.new_patients_inserted)} new,{" "}
+            ✓ Synced — {fmt(summary?.patients_inserted)} new patients, {fmt(summary?.vendas_upserted)} sales,{" "}
             <span style={{ cursor: warnings ? "pointer" : "default", textDecoration: warnings ? "underline" : "none" }} onClick={() => warnings && setShowWarnings((s) => !s)}>{warnings} warnings</span>
           </div>
           {showWarnings && warnList.length > 0 && (
