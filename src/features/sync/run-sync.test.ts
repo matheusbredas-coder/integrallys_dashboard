@@ -1,0 +1,58 @@
+import { describe, it, expect } from "vitest";
+import { runGestekSync } from "./run-sync";
+import type { SyncStore } from "./store";
+import type { GestekCliente, GestekVenda, SupabasePatient } from "./types";
+
+function makeStore(patients: SupabasePatient[]) {
+  const inserted: unknown[] = [];
+  const upserted: unknown[] = [];
+  const store: SyncStore = {
+    readPatients: async () => patients,
+    insertPatients: async (rows) => { inserted.push(...rows); },
+    upsertVendas: async (rows) => { upserted.push(...rows); },
+    logStart: async () => {}, logComplete: async () => {}, logError: async () => {},
+  };
+  return { store, inserted, upserted };
+}
+const gestek = (clientes: GestekCliente[], vendas: GestekVenda[]) => ({
+  fetchAllClientes: async () => clientes,
+  fetchAllVendas: async () => vendas,
+});
+
+describe("runGestekSync", () => {
+  const existing: SupabasePatient[] = Array.from({ length: 100 }, (_, i) => ({ id: String(i + 1), Nome: `P${i}`, gestek_id: `g${i}` }));
+
+  it("happy path: inserts only new patients and upserts vendas", async () => {
+    const { store, inserted, upserted } = makeStore(existing);
+    const clientes = [...existing.map((p) => ({ id: p.gestek_id!, nome: p.Nome })), { id: "gNEW", nome: "NEW ONE" }];
+    const vendas: GestekVenda[] = [{ id: "v1", clienteId: "g0", status: 1, total: 100, itens: [] }];
+    const r = await runGestekSync({ dryRun: false }, { store, gestek: gestek(clientes, vendas), now: () => new Date("2026-06-04T00:00:00Z") });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.summary?.patients_inserted).toBe(1);
+      expect(r.summary?.vendas_upserted).toBe(1);
+    }
+    expect(inserted).toHaveLength(1);
+    expect(upserted).toHaveLength(1);
+  });
+
+  it("dry-run writes nothing but reports the plan", async () => {
+    const { store, inserted, upserted } = makeStore(existing);
+    const clientes = [...existing.map((p) => ({ id: p.gestek_id!, nome: p.Nome })), { id: "gNEW", nome: "NEW ONE" }];
+    const r = await runGestekSync({ dryRun: true }, { store, gestek: gestek(clientes, []), now: () => new Date() });
+    expect(r.ok).toBe(true);
+    if (r.ok) { expect(r.summary?.dryRun).toBe(true); expect(r.summary?.patients_inserted).toBe(1); }
+    expect(inserted).toHaveLength(0);
+    expect(upserted).toHaveLength(0);
+  });
+
+  it("guard trips on an implausible number of new patients (writes nothing)", async () => {
+    const { store, inserted } = makeStore(existing);
+    // every Gestek client looks new (none match existing gestek_id) -> 100 new
+    const clientes = Array.from({ length: 100 }, (_, i) => ({ id: `brand${i}`, nome: `X${i}` }));
+    const r = await runGestekSync({ dryRun: false }, { store, gestek: gestek(clientes, []), now: () => new Date() });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("guard_tripped");
+    expect(inserted).toHaveLength(0);
+  });
+});
