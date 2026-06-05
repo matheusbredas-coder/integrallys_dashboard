@@ -628,68 +628,6 @@
           "name": "Supabase Service Role"
         }
       }
-    },
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "gestek-sync",
-        "authentication": "headerAuth",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        -560,
-        120
-      ],
-      "id": "a69434b2-2818-4f72-af7c-6b1eadafdb56",
-      "name": "Sync Webhook",
-      "webhookId": "17f77eed-6703-4aef-ad9b-f3df40eb959a"
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "9f7eb13d-cafb-4eea-808b-a48255c55544",
-              "name": "trigger",
-              "value": "webhook",
-              "type": "string"
-            },
-            {
-              "id": "fdf14049-b34a-40ca-b52b-a59e1ca82016",
-              "name": "mode",
-              "value": "sync",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        -340,
-        120
-      ],
-      "id": "54d57304-e882-4019-80b2-1315ae699887",
-      "name": "Sync Params"
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ $('Build Run Summary').first().json }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        3936,
-        -256
-      ],
-      "id": "ae00f306-aa91-47d0-9c45-d7fe139ba04e",
-      "name": "Respond Summary"
     }
   ],
   "pinData": {
@@ -947,39 +885,6 @@
         [
           {
             "node": "Upsert Vendas",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Sync Webhook": {
-      "main": [
-        [
-          {
-            "node": "Sync Params",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Sync Params": {
-      "main": [
-        [
-          {
-            "node": "Init Run",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Set Summary as Output": {
-      "main": [
-        [
-          {
-            "node": "Respond Summary",
             "type": "main",
             "index": 0
           }
