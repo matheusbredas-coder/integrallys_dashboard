@@ -9,9 +9,9 @@ const vendas: VendaRow[] = [
   { sold_at: "2026-06-01T12:00:00Z", cliente_supabase_id: "2", cliente_nome: "BIA", total: 500, valor_pago: 500, procedimentos: "MONJAURO 2,5 MG (2)" },
 ];
 const clientes: ClienteRow[] = [
-  { id: "1", cadastro_at: "2026-05-01T00:00:00Z" },
-  { id: "2", cadastro_at: "2026-06-01T00:00:00Z" },
-  { id: "3", cadastro_at: "2026-06-02T00:00:00Z" },
+  { id: "1", cadastro_at: "2026-05-01T00:00:00Z", numero_vendas: 2 },
+  { id: "2", cadastro_at: "2026-06-01T00:00:00Z", numero_vendas: 1 },
+  { id: "3", cadastro_at: "2026-06-02T00:00:00Z", numero_vendas: 0 },
 ];
 const NOW = new Date("2026-06-15T00:00:00Z");
 

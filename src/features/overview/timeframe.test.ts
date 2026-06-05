@@ -10,10 +10,10 @@ const source: OverviewSource = {
     { sold_at: "2026-05-20T12:00:00Z", cliente_supabase_id: "3", cliente_nome: "CARLA", total: 400, valor_pago: 400, procedimentos: "PEELING (1)" },
   ],
   clientes: [
-    { id: "1", cadastro_at: "2026-06-16T09:00:00Z" },
-    { id: "2", cadastro_at: "2026-06-15T09:00:00Z" },
-    { id: "3", cadastro_at: "2026-06-02T09:00:00Z" },
-    { id: "4", cadastro_at: "2026-05-02T09:00:00Z" },
+    { id: "1", cadastro_at: "2026-06-16T09:00:00Z", numero_vendas: 1 },
+    { id: "2", cadastro_at: "2026-06-15T09:00:00Z", numero_vendas: 2 },
+    { id: "3", cadastro_at: "2026-06-02T09:00:00Z", numero_vendas: 0 },
+    { id: "4", cadastro_at: "2026-05-02T09:00:00Z", numero_vendas: 1 },
   ],
   agenda: [
     { appointment_at: "2026-06-16T14:00:00Z", pendente: false }, // today, realized
@@ -53,5 +53,13 @@ describe("buildOverviewSlice", () => {
     expect(week.chart.length).toBeGreaterThan(0);
     expect(month.chart.length).toBeGreaterThan(0);
     expect(year.chart.length).toBeGreaterThan(0);
+  });
+
+  it("conversion = registration-cohort patients who have ever bought", () => {
+    const conv = (s: ReturnType<typeof buildOverviewSlice>) => s.gauges.find((g) => g.key === "conversion")!.pct;
+    expect(conv(buildOverviewSlice(source, "today"))).toBeCloseTo(1 / 1); // registered today: id1 (bought)
+    expect(conv(buildOverviewSlice(source, "week"))).toBeCloseTo(2 / 2);  // id1, id2 (both bought)
+    expect(conv(buildOverviewSlice(source, "month"))).toBeCloseTo(2 / 3); // id1, id2, id3 (id3 no sale)
+    expect(conv(buildOverviewSlice(source, "year"))).toBeCloseTo(3 / 4);  // id1..id4 (id3 no sale)
   });
 });

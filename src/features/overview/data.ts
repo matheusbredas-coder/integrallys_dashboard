@@ -9,7 +9,7 @@ export async function getOverviewSource(now = new Date()): Promise<OverviewSourc
   const sb = createSupabaseServiceClient();
   const [vendasRes, clientesRes, agendaRes, settingsRes] = await Promise.all([
     sb.from("vendas_view").select("sold_at, cliente_supabase_id, cliente_nome, total, valor_pago, procedimentos"),
-    sb.from("clientes_view").select("id, cadastro_at"),
+    sb.from("clientes_view").select("id, cadastro_at, numero_vendas"),
     sb.from("agenda_view").select("appointment_at, pendente"),
     sb.from("app_settings").select("key, value"),
   ]);

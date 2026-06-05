@@ -185,6 +185,7 @@ export function buildOverviewSlice(source: OverviewSource, timeframe: Timeframe)
   const sales = vendas.length;
   const buyers = new Set(vendas.map((v) => v.cliente_supabase_id).filter(Boolean)).size;
   const patients = clientes.length;
+  const convertedPatients = clientes.filter((c) => (c.numero_vendas ?? 0) > 0).length;
   const avgTicket = sales ? revenueBilled / sales : 0;
   const revenueGoal = goalForRange(source.goals.monthly_revenue_goal, timeframe, now);
   const newPatientsGoal = goalForRange(source.goals.monthly_new_patient_goal, timeframe, now);
@@ -193,7 +194,7 @@ export function buildOverviewSlice(source: OverviewSource, timeframe: Timeframe)
   const gauges: Gauge[] = [
     { key: "revenue", label: "Meta de receita", sub: "No período selecionado", value: brl(revenueBilled), pct: clamp(revenueBilled / (revenueGoal || 1)) },
     { key: "newPatients", label: "Novos pacientes", sub: "No período selecionado", value: String(patients), pct: clamp(patients / (newPatientsGoal || 1)) },
-    { key: "conversion", label: "Conversão", sub: "Pacientes que compraram", value: pct(buyers, patients), pct: clamp(patients ? buyers / patients : 0) },
+    { key: "conversion", label: "Conversão", sub: "Novos pacientes que compraram", value: pct(convertedPatients, patients), pct: clamp(patients ? convertedPatients / patients : 0) },
     { key: "avgTicket", label: "Ticket médio", sub: `Meta: R$ ${source.goals.avg_ticket_goal}`, value: brl(avgTicket), pct: clamp(avgTicket / (source.goals.avg_ticket_goal || 1)) },
   ];
 

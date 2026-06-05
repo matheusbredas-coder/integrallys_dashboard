@@ -6,7 +6,7 @@ export type VendaRow = {
   valor_pago: number;
   procedimentos: string | null;
 };
-export type ClienteRow = { id: string; cadastro_at: string | null };
+export type ClienteRow = { id: string; cadastro_at: string | null; numero_vendas: number };
 export type AgendaRow = { appointment_at: string; pendente: boolean };
 export type Goals = { monthly_revenue_goal: number; monthly_new_patient_goal: number; avg_ticket_goal: number };
 export type Timeframe = "today" | "week" | "month" | "year";
