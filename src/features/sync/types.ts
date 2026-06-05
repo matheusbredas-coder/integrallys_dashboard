@@ -9,6 +9,29 @@ export type GestekVenda = {
   dataCriacao?: string; dataUltimaAlteracao?: string;
 };
 
+export type GestekAgendaProc = { id?: string; nome?: string; duracaoMinutos?: number; valor?: number };
+export type GestekAgenda = {
+  id: string;
+  dataAgendamentoInicio?: string;
+  pendente?: boolean;
+  clienteNome?: string;
+  clienteTelefone?: string;
+  profissional?: { id?: string; nome?: string; cargo?: string | null };
+  salaAtendimento?: { id?: string; nome?: string };
+  procedimentos?: GestekAgendaProc[];
+};
+export type GestekAgendaRow = {
+  id: string;
+  data_inicio: string;
+  pendente: boolean;
+  cliente_nome: string | null;
+  cliente_telefone: string | null;
+  profissional_id: string | null;
+  profissional_nome: string | null;
+  sala_nome: string | null;
+  procedimentos: unknown[];
+};
+
 // Supabase shapes
 export type SupabasePatient = { id: string; Nome?: string; gestek_id?: string | null };
 export type NewPatientRow = { id: string; gestek_id: string; Nome: string; "Data do Cadastro": string };
@@ -24,7 +47,7 @@ export type GestekVendaRow = {
 
 export type SyncSummary = {
   run_id?: string; mode?: string; dryRun?: boolean;
-  total_clientes?: number; patients_inserted?: number; vendas_upserted?: number;
+  total_clientes?: number; patients_inserted?: number; vendas_upserted?: number; agenda_upserted?: number;
   orphan_supabase_patients?: number; duplicate_name_warnings?: number;
   started_at?: string; completed_at?: string;
   [k: string]: unknown;
