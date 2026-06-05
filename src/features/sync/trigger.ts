@@ -17,7 +17,7 @@ export type SyncWarning = { level?: string; message?: string };
 
 export type SyncResult =
   | { ok: true; summary: SyncSummary | null; warnings: SyncWarning[] }
-  | { ok: false; code: "not_configured" | "webhook_error" | "network" | "timeout"; status?: number; message: string };
+  | { ok: false; code: "disabled" | "not_configured" | "webhook_error" | "network" | "timeout"; status?: number; message: string };
 
 const TIMEOUT_MS = 55_000;
 

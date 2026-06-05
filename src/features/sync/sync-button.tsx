@@ -6,7 +6,7 @@ type Phase = "idle" | "confirm" | "syncing" | "done" | "error";
 
 function fmt(n: unknown) { return typeof n === "number" ? n.toLocaleString("pt-BR") : "—"; }
 
-export function SyncButton() {
+export function SyncButton({ enabled = false }: { enabled?: boolean }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [summary, setSummary] = useState<SyncSummary | null>(null);
   const [warnings, setWarnings] = useState<number>(0);
@@ -41,6 +41,15 @@ export function SyncButton() {
 
   const btn: React.CSSProperties = { background: "var(--gold)", color: "#0a0a0b", border: "none", borderRadius: 12, padding: "10px 16px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" };
   const ghost: React.CSSProperties = { background: "transparent", border: "1px solid var(--line)", borderRadius: 12, padding: "10px 14px", color: "var(--muted)", fontSize: 13.5, cursor: "pointer" };
+
+  if (!enabled) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, minWidth: 220 }} title="Gestek sync is paused for maintenance">
+        <button disabled style={{ ...btn, background: "var(--panel-hi)", color: "var(--muted)", border: "1px solid var(--line)", cursor: "not-allowed" }}>↻ Sync Gestek</button>
+        <span className="muted" style={{ fontSize: 11 }}>temporarily disabled</span>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, minWidth: 220 }}>

@@ -17,7 +17,7 @@ export default async function OverviewPage() {
           <h1 style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-.6px" }}>Hello, Matheus</h1>
           <p className="muted" style={{ marginTop: 4 }}>Here&apos;s your clinic at a glance.</p>
         </div>
-        <SyncButton />
+        <SyncButton enabled={process.env.SYNC_ENABLED === "true"} />
       </div>
       <KpiCards kpi={d.kpi} />
       <Gauges gauges={d.gauges} />
