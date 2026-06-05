@@ -35,7 +35,30 @@ export function fetchAllClientes(fetchImpl: typeof fetch = fetch): Promise<Geste
   return fetchPaged<GestekCliente>("/clientes", "clientes", {}, fetchImpl);
 }
 
-export function fetchAllVendas(startISO: string, fetchImpl: typeof fetch = fetch): Promise<GestekVenda[]> {
-  const end = new Date().toISOString().slice(0, 10);
-  return fetchPaged<GestekVenda>("/vendas", "vendas", { DataInicio: startISO, DataFim: end, Status: "1" }, fetchImpl);
+// Gestek /vendas caps the date filter at 31 days, so we page month-by-month
+// from startISO to today (each calendar month is <= 31 days).
+export function monthlyWindows(startISO: string, today = new Date()): { start: string; end: string }[] {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const start = new Date(startISO + "T00:00:00Z");
+  let y = start.getUTCFullYear();
+  let m = start.getUTCMonth();
+  const endY = today.getUTCFullYear();
+  const endM = today.getUTCMonth();
+  const out: { start: string; end: string }[] = [];
+  while (y < endY || (y === endY && m <= endM)) {
+    const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    out.push({ start: `${y}-${pad(m + 1)}-01`, end: `${y}-${pad(m + 1)}-${pad(lastDay)}` });
+    m++;
+    if (m > 11) { m = 0; y++; }
+  }
+  return out;
+}
+
+export async function fetchAllVendas(startISO: string, fetchImpl: typeof fetch = fetch): Promise<GestekVenda[]> {
+  const byId = new Map<string, GestekVenda>(); // sales can recur across windows; dedupe by id
+  for (const w of monthlyWindows(startISO)) {
+    const items = await fetchPaged<GestekVenda>("/vendas", "vendas", { DataInicio: w.start, DataFim: w.end, Status: "1" }, fetchImpl);
+    for (const v of items) if (v.id) byId.set(v.id, v);
+  }
+  return [...byId.values()];
 }

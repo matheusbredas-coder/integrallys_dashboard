@@ -55,16 +55,26 @@ export async function runGestekSync(opts: { dryRun?: boolean }, deps?: RunDeps):
   const newRows: NewPatientRow[] = split.newGestekClients.map((c: GestekCliente) => ({
     id: c.id, gestek_id: c.id, Nome: c.nome ?? "", "Data do Cadastro": fmtCadastro(c.dataCriacao),
   }));
-  if (!dryRun) await store.insertPatients(newRows);
 
-  // gestek_id -> Supabase id, including patients we just inserted (id === gestek_id for new rows)
+  // gestek_id -> Supabase id, including patients we'll insert (id === gestek_id for new rows)
   const idMap: Record<string, string> = { ...split.gestekIdToSupabaseId };
   for (const r of newRows) idMap[r.gestek_id] = r.id;
 
+  // Fetch ALL Gestek data before any write, so a fetch error never leaves partial data.
   const startISO = process.env.GESTEK_SYNC_START_DATE || "2024-01-01";
-  const vendas = await gestek.fetchAllVendas(startISO);
+  let vendas: GestekVenda[];
+  try {
+    vendas = await gestek.fetchAllVendas(startISO);
+  } catch (e) {
+    if (!dryRun) await store.logError(run_id, now().toISOString(), e instanceof Error ? e.message : "vendas fetch failed");
+    return { ok: false, code: "gestek_error", message: e instanceof Error ? e.message : "Gestek vendas fetch failed" };
+  }
   const vendaRows = vendas.filter((v) => v.id).map((v) => mapVendaToRow(v, idMap, split.supabaseNameToId));
-  if (!dryRun) await store.upsertVendas(vendaRows);
+
+  if (!dryRun) {
+    await store.insertPatients(newRows);
+    await store.upsertVendas(vendaRows);
+  }
 
   const completed_at = now().toISOString();
   const warnings: SyncWarning[] = split.duplicates;
