@@ -11,11 +11,11 @@ export function isSyncEnabled() {
 export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return new Response("Unauthorized", { status: 401 });
+  if (!user) return new Response("Não autorizado", { status: 401 });
 
   const dryRun = new URL(req.url).searchParams.get("dryRun") === "1";
   if (!isSyncEnabled()) {
-    return Response.json({ ok: false, code: "disabled", message: "Sync is temporarily disabled." }, { status: 503 });
+    return Response.json({ ok: false, code: "disabled", message: "A sincronização está temporariamente desativada." }, { status: 503 });
   }
 
   const result = await runGestekSync({ dryRun });

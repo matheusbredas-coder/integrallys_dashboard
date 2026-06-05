@@ -12,17 +12,17 @@ export default async function OverviewPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ChatLauncher />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div>
-          <h1 style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-.6px" }}>Hello, Matheus</h1>
-          <p className="muted" style={{ marginTop: 4 }}>Here&apos;s your clinic at a glance.</p>
+          <h1 style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-.6px" }}>Olá, Matheus</h1>
+          <p className="muted" style={{ marginTop: 4 }}>Aqui está um resumo da sua clínica.</p>
         </div>
         <SyncButton enabled={process.env.SYNC_ENABLED === "true"} />
       </div>
       <KpiCards kpi={d.kpi} />
       <Gauges gauges={d.gauges} />
       <RevenueChart data={d.months} />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22 }}>
+      <div className="grid-2">
         <RecentSales rows={d.recent} />
         <TopProcedures rows={d.topProcedures} />
       </div>

@@ -6,23 +6,23 @@ import { SCHEMA_DESCRIPTION } from "./schema";
 
 const MODEL = process.env.CHAT_MODEL ?? "claude-opus-4-8";
 
-const SYSTEM = `You are the data assistant for the Integrallys aesthetic clinic CRM. Answer questions about patients and sales by querying the database with the run_sql tool — never guess numbers.
+const SYSTEM = `Você é o assistente de dados do CRM da clínica de estética Integrallys. Responda perguntas sobre pacientes e vendas consultando o banco de dados com a ferramenta run_sql — nunca chute números.
 
 ${SCHEMA_DESCRIPTION}
 
-How to work:
-- Call run_sql with ONE read-only Postgres SELECT to get the facts you need. Aggregate in SQL; keep results small.
-- If a query errors, read the error and try a corrected query (a few attempts max).
-- Then answer concisely in the user's language (match Portuguese/English). Format money as "R$ 1.234,56".`;
+Como trabalhar:
+- Chame run_sql com UM SELECT somente leitura do Postgres para obter os fatos necessários. Agregue no SQL; mantenha os resultados pequenos.
+- Se uma consulta falhar, leia o erro e tente uma consulta corrigida (no máximo algumas tentativas).
+- Depois responda de forma concisa em português (pt-BR). Formate dinheiro como "R$ 1.234,56".`;
 
 const TOOLS: Anthropic.ToolUnion[] = [
   {
     name: "run_sql",
     description:
-      "Run a single read-only Postgres SELECT against the clinic views to answer the user. Use it whenever the question is about patients, sales, revenue, procedures, or trends. Only SELECT/WITH is allowed; it runs read-only and is capped at 1000 rows.",
+      "Execute uma única consulta SELECT somente leitura nas views da clínica para responder ao usuário. Use sempre que a pergunta for sobre pacientes, vendas, receita, procedimentos ou tendências. Apenas SELECT/WITH é permitido; a consulta é somente leitura e tem limite de 1000 linhas.",
     input_schema: {
       type: "object",
-      properties: { query: { type: "string", description: "A single Postgres SELECT statement." } },
+      properties: { query: { type: "string", description: "Uma única instrução SELECT do Postgres." } },
       required: ["query"],
     },
   },
@@ -67,5 +67,5 @@ export async function runChat(history: Anthropic.MessageParam[], onText: (t: str
     }
     messages.push({ role: "user", content: results });
   }
-  onText("\n\n_(Stopped after several steps — try rephrasing.)_");
+  onText("\n\n_(Interrompido após algumas etapas — tente reformular.)_");
 }

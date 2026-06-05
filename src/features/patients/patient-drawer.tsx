@@ -6,7 +6,7 @@ import { formatBRL } from "@/lib/format";
 function shortDate(iso: string) { const d = new Date(iso); const p = (n: number) => String(n).padStart(2, "0"); return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`; }
 
 export function PatientDrawer({ row, columns, sales, onClose }: { row: Row; columns: ColumnDef[]; sales: PatientSale[]; onClose: () => void }) {
-  const name = String(row["Nome"] ?? "Patient");
+  const name = String(row["Nome"] ?? "Paciente");
   const totalBilled = sales.reduce((a, s) => a + s.total, 0);
   return (
     <>
@@ -24,10 +24,10 @@ export function PatientDrawer({ row, columns, sales, onClose }: { row: Row; colu
             </div>))}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700 }}>Sales history</h3>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--gold)" }}>{formatBRL(totalBilled)} · {sales.length}</span>
+          <h3 style={{ fontSize: 14, fontWeight: 700 }}>Histórico de vendas</h3>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--gold)" }}>{formatBRL(totalBilled)} · {sales.length} vendas</span>
         </div>
-        {sales.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No sales recorded.</p>}
+        {sales.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Nenhuma venda registrada.</p>}
         {sales.map((s, i) => (
           <div key={i} style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>

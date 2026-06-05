@@ -31,9 +31,9 @@ export function PatientsTable({ columns, rows, salesByPatient }: { columns: Colu
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
       <div style={{ padding: 16, borderBottom: "1px solid var(--line)", display: "flex", gap: 12, alignItems: "center" }}>
-        <input value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} placeholder="Search patients…"
+        <input value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} placeholder="Pesquisar pacientes…"
           style={{ flex: 1, maxWidth: 320, padding: "10px 14px", borderRadius: 12, background: "var(--panel-hi)", border: "1px solid var(--line)", color: "var(--txt)", fontSize: 13 }} />
-        <span className="muted" style={{ fontSize: 12 }}>{filtered.length} patients</span>
+        <span className="muted" style={{ fontSize: 12 }}>{filtered.length} pacientes</span>
       </div>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -58,9 +58,9 @@ export function PatientsTable({ columns, rows, salesByPatient }: { columns: Colu
         </table>
       </div>
       <div style={{ padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <button disabled={page === 0} onClick={() => setPage((p) => p - 1)} style={pgBtn}>← Prev</button>
-        <span className="muted" style={{ fontSize: 12 }}>Page {page + 1} / {pages}</span>
-        <button disabled={page >= pages - 1} onClick={() => setPage((p) => p + 1)} style={pgBtn}>Next →</button>
+        <button disabled={page === 0} onClick={() => setPage((p) => p - 1)} style={pgBtn}>← Anterior</button>
+        <span className="muted" style={{ fontSize: 12 }}>Página {page + 1} de {pages}</span>
+        <button disabled={page >= pages - 1} onClick={() => setPage((p) => p + 1)} style={pgBtn}>Próximo →</button>
       </div>
       {selected && <PatientDrawer row={selected} columns={columns} sales={salesByPatient[String(selected["id"] ?? "")] ?? []} onClose={() => setSelected(null)} />}
     </div>

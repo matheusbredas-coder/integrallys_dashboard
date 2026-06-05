@@ -10,7 +10,7 @@ function shortDate(iso: string) {
 export function RecentSales({ rows }: { rows: RecentSale[] }) {
   return (
     <div className="card" style={{ padding: 20 }}>
-      <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Recent sales</h3>
+      <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Vendas recentes</h3>
       {rows.map((r, i) => (
         <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
           <div style={{ fontSize: 12, color: "var(--muted)", width: 42, flex: "none" }}>{shortDate(r.soldAt)}</div>

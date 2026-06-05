@@ -22,10 +22,10 @@ export function computeOverview(vendas: VendaRow[], clientes: ClienteRow[], goal
   const clamp = (n: number) => Math.max(0, Math.min(1, n));
 
   const gauges: Gauge[] = [
-    { key: "revenue", label: "Revenue goal", sub: "This month vs goal", value: brl(tm?.revenue ?? 0), pct: clamp((tm?.revenue ?? 0) / (goals.monthly_revenue_goal || 1)) },
-    { key: "newPatients", label: "New patients", sub: "This month vs target", value: String(tm?.newPatients ?? 0), pct: clamp((tm?.newPatients ?? 0) / (goals.monthly_new_patient_goal || 1)) },
-    { key: "conversion", label: "Conversion", sub: "Patients who bought", value: pct(buyers, patients), pct: clamp(patients ? buyers / patients : 0) },
-    { key: "avgTicket", label: "Avg ticket", sub: `vs R$ ${goals.avg_ticket_goal} goal`, value: brl(avgTicket), pct: clamp(avgTicket / (goals.avg_ticket_goal || 1)) },
+    { key: "revenue", label: "Meta de receita", sub: "Este mês em relação à meta", value: brl(tm?.revenue ?? 0), pct: clamp((tm?.revenue ?? 0) / (goals.monthly_revenue_goal || 1)) },
+    { key: "newPatients", label: "Novos pacientes", sub: "Este mês em relação à meta", value: String(tm?.newPatients ?? 0), pct: clamp((tm?.newPatients ?? 0) / (goals.monthly_new_patient_goal || 1)) },
+    { key: "conversion", label: "Conversão", sub: "Pacientes que compraram", value: pct(buyers, patients), pct: clamp(patients ? buyers / patients : 0) },
+    { key: "avgTicket", label: "Ticket médio", sub: `Meta: R$ ${goals.avg_ticket_goal}`, value: brl(avgTicket), pct: clamp(avgTicket / (goals.avg_ticket_goal || 1)) },
   ];
 
   const recent = [...vendas]

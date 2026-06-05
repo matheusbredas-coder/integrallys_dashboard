@@ -8,9 +8,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect("/login");
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "248px 1fr", minHeight: "100vh" }}>
-      <Sidebar email={user.email ?? "User"} />
-      <main style={{ padding: "30px 34px" }}>{children}</main>
+    <div className="app-shell">
+      <Sidebar email={user.email ?? "Usuário"} />
+      <main className="app-main">{children}</main>
     </div>
   );
 }

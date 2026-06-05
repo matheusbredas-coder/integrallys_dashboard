@@ -55,7 +55,7 @@ describe("runGestekSync", () => {
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.summary?.patients_inserted).toBe(0); // dup record skipped
-      expect(r.warnings.some((w) => (w.message || "").includes("already exists"))).toBe(true);
+      expect(r.warnings.some((w) => (w.message || "").includes("já existe no Supabase"))).toBe(true);
     }
     expect(inserted).toHaveLength(0);
   });

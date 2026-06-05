@@ -35,7 +35,7 @@ export function splitPatients(gestekClients: GestekCliente[], supabasePatients: 
     if (!c.id) continue;
     const nk = normalizeName(c.nome);
     if (nk) {
-      if (seenName.has(nk)) duplicates.push({ level: "warn", message: `Duplicate Gestek name "${nk}" (${c.nome})` });
+      if (seenName.has(nk)) duplicates.push({ level: "warn", message: `Nome duplicado no Gestek "${nk}" (${c.nome})` });
       else seenName.add(nk);
     }
     if (!existing.has(c.id)) newGestekClients.push(c); // match on gestek_id only

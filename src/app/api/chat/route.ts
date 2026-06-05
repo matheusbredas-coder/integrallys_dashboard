@@ -8,14 +8,14 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return new Response("Unauthorized", { status: 401 });
+  if (!user) return new Response("Não autorizado", { status: 401 });
 
   let history: Anthropic.MessageParam[] = [];
   try {
     const body = await req.json();
     history = (body.messages ?? []) as Anthropic.MessageParam[];
   } catch {
-    return new Response("Bad request", { status: 400 });
+    return new Response("Requisição inválida", { status: 400 });
   }
 
   const encoder = new TextEncoder();
@@ -24,8 +24,8 @@ export async function POST(req: Request) {
       try {
         await runChat(history, (t) => controller.enqueue(encoder.encode(t)));
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "error";
-        controller.enqueue(encoder.encode(`\n\n[Error: ${msg}]`));
+        const msg = e instanceof Error ? e.message : "erro";
+        controller.enqueue(encoder.encode(`\n\n[Erro: ${msg}]`));
       } finally {
         controller.close();
       }

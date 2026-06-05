@@ -4,7 +4,7 @@ import type { ProcCount } from "./types";
 export function TopProcedures({ rows }: { rows: ProcCount[] }) {
   return (
     <div className="card" style={{ padding: 20 }}>
-      <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Top procedures</h3>
+      <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Procedimentos mais realizados</h3>
       {rows.map((r, i) => (
         <div key={r.name} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
           <div style={{ minWidth: 0, fontSize: 13, color: "#dcdee6", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

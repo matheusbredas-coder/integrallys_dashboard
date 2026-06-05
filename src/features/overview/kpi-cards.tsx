@@ -3,13 +3,13 @@ import type { Kpi } from "./types";
 
 export function KpiCards({ kpi }: { kpi: Kpi }) {
   const items = [
-    { label: "Revenue (billed)", value: formatBRL(kpi.revenueBilled), sub: `${formatBRL(kpi.revenueCollected)} collected · ${formatBRL(kpi.outstanding)} open` },
-    { label: "Patients", value: formatInt(kpi.patients), sub: `${formatInt(kpi.buyers)} buyers` },
-    { label: "Sales", value: formatInt(kpi.sales), sub: "completed" },
-    { label: "Avg ticket", value: formatBRL(kpi.avgTicket), sub: "per sale" },
+    { label: "Receita (faturada)", value: formatBRL(kpi.revenueBilled), sub: `${formatBRL(kpi.revenueCollected)} recebido · ${formatBRL(kpi.outstanding)} em aberto` },
+    { label: "Pacientes", value: formatInt(kpi.patients), sub: `${formatInt(kpi.buyers)} compradores` },
+    { label: "Vendas", value: formatInt(kpi.sales), sub: "concluídas" },
+    { label: "Ticket médio", value: formatBRL(kpi.avgTicket), sub: "por venda" },
   ];
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 18 }}>
+    <div className="grid-4">
       {items.map((it) => (
         <div key={it.label} className="card" style={{ padding: "22px 24px", position: "relative", overflow: "hidden" }}>
           <div style={{ position: "absolute", right: -30, top: -30, width: 120, height: 120, borderRadius: "50%", background: "radial-gradient(circle, rgba(217,178,76,.10), transparent 70%)" }} />

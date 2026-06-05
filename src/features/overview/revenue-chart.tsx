@@ -6,7 +6,7 @@ import type { MonthPoint } from "./types";
 export function RevenueChart({ data }: { data: MonthPoint[] }) {
   return (
     <div className="card" style={{ padding: 20 }}>
-      <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Monthly revenue</h3>
+      <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Receita mensal</h3>
       <ResponsiveContainer width="100%" height={260}>
         <ComposedChart data={data}>
           <defs>

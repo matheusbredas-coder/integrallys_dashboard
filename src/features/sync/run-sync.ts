@@ -34,7 +34,7 @@ export async function runGestekSync(opts: { dryRun?: boolean }, deps?: RunDeps):
     if (!dryRun) await store.logStart({ run_id, started_at, trigger: "webhook", mode: "sync" });
     clientes = await gestek.fetchAllClientes();
   } catch (e) {
-    return { ok: false, code: "gestek_error", message: e instanceof Error ? e.message : "Gestek fetch failed" };
+    return { ok: false, code: "gestek_error", message: e instanceof Error ? e.message : "Falha ao buscar dados do Gestek." };
   }
 
   const patients = await store.readPatients();
@@ -47,7 +47,7 @@ export async function runGestekSync(opts: { dryRun?: boolean }, deps?: RunDeps):
   const newClients = split.newGestekClients.filter((c) => {
     const collide = split.supabaseNameToId[normalizeName(c.nome)];
     if (collide) {
-      warnings.push({ level: "warn", message: `Skipped insert: "${c.nome}" already exists in Supabase (id ${collide}); Gestek has a duplicate record (${c.id})` });
+      warnings.push({ level: "warn", message: `Inserção ignorada: "${c.nome}" já existe no Supabase (id ${collide}); o Gestek tem um registro duplicado (${c.id})` });
       return false;
     }
     return true;
@@ -60,7 +60,7 @@ export async function runGestekSync(opts: { dryRun?: boolean }, deps?: RunDeps):
     if (!dryRun) await store.logError(run_id, completed_at, `guard: ${newClients.length} new > ${limit}`);
     return {
       ok: false, code: "guard_tripped",
-      message: `Aborted: ${newClients.length} new patients exceeds the safe limit of ${limit}. Matching may be broken — nothing was written.`,
+      message: `Interrompido: ${newClients.length} novos pacientes excedem o limite seguro de ${limit}. O pareamento pode estar quebrado — nada foi gravado.`,
       summary: { run_id, dryRun, total_clientes: clientes.length, patients_inserted: newClients.length },
     };
   }
@@ -84,8 +84,8 @@ export async function runGestekSync(opts: { dryRun?: boolean }, deps?: RunDeps):
   try {
     vendas = await gestek.fetchAllVendas(startISO);
   } catch (e) {
-    if (!dryRun) await store.logError(run_id, now().toISOString(), e instanceof Error ? e.message : "vendas fetch failed");
-    return { ok: false, code: "gestek_error", message: e instanceof Error ? e.message : "Gestek vendas fetch failed" };
+    if (!dryRun) await store.logError(run_id, now().toISOString(), e instanceof Error ? e.message : "falha ao buscar vendas");
+    return { ok: false, code: "gestek_error", message: e instanceof Error ? e.message : "Falha ao buscar vendas do Gestek." };
   }
   const vendaRows = vendas.filter((v) => v.id).map((v) => mapVendaToRow(v, idMap, split.supabaseNameToId));
 

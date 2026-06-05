@@ -2,7 +2,7 @@ import type { Gauge } from "./types";
 
 export function Gauges({ gauges }: { gauges: Gauge[] }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 18 }}>
+    <div className="grid-4">
       {gauges.map((g, i) => {
         const deg = Math.round(g.pct * 360);
         return (

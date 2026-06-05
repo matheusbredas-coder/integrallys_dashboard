@@ -5,7 +5,7 @@ const KNOWN: Record<string, { label: string; type: ColType }> = {
   id: { label: "ID", type: "text" },
   Nome: { label: "Nome", type: "text" },
   "Telefone Principal": { label: "Telefone", type: "text" },
-  "Email Principal": { label: "Email", type: "text" },
+  "Email Principal": { label: "E-mail", type: "text" },
   Origem: { label: "Origem", type: "text" },
   "Data do Cadastro": { label: "Cadastro", type: "date" },
   "Numero de Vendas": { label: "Vendas", type: "int" },

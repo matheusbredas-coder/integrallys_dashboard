@@ -10,7 +10,7 @@ const jakarta = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: "Integrallys CRM",
-  description: "Clinic operations dashboard",
+  description: "Painel de operações da clínica",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
