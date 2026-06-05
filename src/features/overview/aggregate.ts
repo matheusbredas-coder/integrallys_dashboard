@@ -1,14 +1,15 @@
 import { topProcedures } from "@/lib/procedimentos";
-import type { VendaRow, ClienteRow, Goals, OverviewData, MonthPoint, Gauge } from "./types";
+import type { VendaRow, ClienteRow, AgendaRow, Goals, OverviewData, MonthPoint, Gauge } from "./types";
 
 const ym = (iso: string) => iso.slice(0, 7);
 
-export function computeOverview(vendas: VendaRow[], clientes: ClienteRow[], goals: Goals, now: Date): OverviewData {
+export function computeOverview(vendas: VendaRow[], clientes: ClienteRow[], goals: Goals, now: Date, agenda: AgendaRow[] = []): OverviewData {
   const revenueBilled = vendas.reduce((a, v) => a + (Number(v.total) || 0), 0);
   const revenueCollected = vendas.reduce((a, v) => a + (Number(v.valor_pago) || 0), 0);
   const sales = vendas.length;
   const buyers = new Set(vendas.map((v) => v.cliente_supabase_id).filter(Boolean)).size;
   const patients = clientes.length;
+  const atendimentos = agenda.filter((a) => a.pendente === false).length;
 
   const months = new Map<string, MonthPoint>();
   const bucket = (k: string) => months.get(k) ?? months.set(k, { month: k, revenue: 0, collected: 0, sales: 0, newPatients: 0 }).get(k)!;
@@ -34,7 +35,7 @@ export function computeOverview(vendas: VendaRow[], clientes: ClienteRow[], goal
     .map((v) => ({ soldAt: v.sold_at, patient: v.cliente_nome ?? "—", procedimentos: v.procedimentos ?? "—", total: Number(v.total) || 0 }));
 
   return {
-    kpi: { revenueBilled, revenueCollected, outstanding: revenueBilled - revenueCollected, patients, buyers, sales, avgTicket },
+    kpi: { revenueBilled, revenueCollected, outstanding: revenueBilled - revenueCollected, patients, buyers, sales, avgTicket, atendimentos },
     gauges, months: monthList,
     topProcedures: topProcedures(vendas.map((v) => v.procedimentos), 6),
     recent,

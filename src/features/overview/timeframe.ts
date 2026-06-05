@@ -190,7 +190,7 @@ export function buildOverviewSlice(source: OverviewSource, timeframe: Timeframe)
   ];
 
   return {
-    kpi: { revenueBilled, revenueCollected, outstanding: revenueBilled - revenueCollected, patients, buyers, sales, avgTicket },
+    kpi: { revenueBilled, revenueCollected, outstanding: revenueBilled - revenueCollected, patients, buyers, sales, avgTicket, atendimentos: 0 },
     gauges,
     chart: buckets,
     topProcedures: topProcedures(vendas.map((v) => v.procedimentos), 6) as ProcCount[],

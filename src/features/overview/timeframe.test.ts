@@ -15,6 +15,7 @@ const source: OverviewSource = {
     { id: "3", cadastro_at: "2026-06-02T09:00:00Z" },
     { id: "4", cadastro_at: "2026-05-02T09:00:00Z" },
   ],
+  agenda: [],
   goals: { monthly_revenue_goal: 1000, monthly_new_patient_goal: 4, avg_ticket_goal: 100 },
   recent: [],
   nowIso: "2026-06-16T12:00:00Z",

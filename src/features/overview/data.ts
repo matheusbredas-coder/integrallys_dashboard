@@ -7,13 +7,15 @@ const DEFAULT_GOALS: Goals = { monthly_revenue_goal: 65000, monthly_new_patient_
 
 export async function getOverviewSource(now = new Date()): Promise<OverviewSource> {
   const sb = createSupabaseServiceClient();
-  const [vendasRes, clientesRes, settingsRes] = await Promise.all([
+  const [vendasRes, clientesRes, agendaRes, settingsRes] = await Promise.all([
     sb.from("vendas_view").select("sold_at, cliente_supabase_id, cliente_nome, total, valor_pago, procedimentos"),
     sb.from("clientes_view").select("id, cadastro_at"),
+    sb.from("agenda_view").select("appointment_at, pendente"),
     sb.from("app_settings").select("key, value"),
   ]);
   if (vendasRes.error) throw vendasRes.error;
   if (clientesRes.error) throw clientesRes.error;
+  if (agendaRes.error) throw agendaRes.error;
 
   const goals: Goals = { ...DEFAULT_GOALS };
   for (const row of settingsRes.data ?? []) {
@@ -27,6 +29,7 @@ export async function getOverviewSource(now = new Date()): Promise<OverviewSourc
   return {
     vendas: vendasRes.data ?? [],
     clientes: clientesRes.data ?? [],
+    agenda: agendaRes.data ?? [],
     goals,
     recent,
     nowIso: now.toISOString(),
@@ -35,5 +38,5 @@ export async function getOverviewSource(now = new Date()): Promise<OverviewSourc
 
 export async function getOverviewData(now = new Date()): Promise<OverviewData> {
   const source = await getOverviewSource(now);
-  return computeOverview(source.vendas, source.clientes, source.goals, now);
+  return computeOverview(source.vendas, source.clientes, source.goals, now, source.agenda);
 }
