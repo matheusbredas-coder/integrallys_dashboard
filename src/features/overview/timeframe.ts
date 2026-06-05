@@ -167,10 +167,6 @@ function brl(n: number) {
   return `R$ ${Math.round(n).toLocaleString("pt-BR")}`;
 }
 
-function pct(a: number, b: number) {
-  return b ? `${Math.round((a / b) * 100)}%` : "—";
-}
-
 export function buildOverviewSlice(source: OverviewSource, range: DateRange) {
   const now = new Date(source.nowIso);
   const granularity = deriveGranularity(range);
@@ -206,18 +202,17 @@ export function buildOverviewSlice(source: OverviewSource, range: DateRange) {
   const patients = clientes.length;
   const avgTicket = sales ? revenueBilled / sales : 0;
   const revenueGoal = goalForRange(source.goals.monthly_revenue_goal, range);
-  const newPatientsGoal = goalForRange(source.goals.monthly_new_patient_goal, range);
   const clamp = (n: number) => Math.max(0, Math.min(1, n));
 
-  // Comparecimento = realized share of resolved bookings; future (agendado) is excluded.
+  // Atendimentos gauge: value is the realized count; the ring is the comparecimento rate
+  // (realized share of resolved bookings) — future (agendado) bookings are excluded.
   const resolved = atendimentos + cancelados + faltas;
 
   const gauges: Gauge[] = [
     { key: "revenue", label: "Meta de receita", sub: "No período selecionado", value: brl(revenueBilled), pct: clamp(revenueBilled / (revenueGoal || 1)) },
-    { key: "newPatients", label: "Novos pacientes", sub: "No período selecionado", value: String(patients), pct: clamp(patients / (newPatientsGoal || 1)) },
+    { key: "attendance", label: "Atendimentos", sub: "Comparecimento no período", value: String(atendimentos), pct: clamp(resolved ? atendimentos / resolved : 0) },
     { key: "discounts", label: "Descontos", sub: "% do faturamento bruto", value: brl(discountsGiven), pct: clamp(gross ? discountsGiven / gross : 0) },
     { key: "avgTicket", label: "Ticket médio", sub: `Meta: R$ ${source.goals.avg_ticket_goal}`, value: brl(avgTicket), pct: clamp(avgTicket / (source.goals.avg_ticket_goal || 1)) },
-    { key: "attendance", label: "Comparecimento", sub: "Realizados ÷ resolvidos", value: pct(atendimentos, resolved), pct: clamp(resolved ? atendimentos / resolved : 0) },
   ];
 
   return {

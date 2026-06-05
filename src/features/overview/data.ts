@@ -1,7 +1,6 @@
 import "server-only";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { computeOverview } from "./aggregate";
-import type { OverviewData, OverviewSource, Goals } from "./types";
+import type { OverviewSource, Goals } from "./types";
 import { DEFAULT_GOALS } from "@/features/settings/goals";
 
 // PostgREST caps a single response at 1000 rows. These views grow unbounded
@@ -45,9 +44,4 @@ export async function getOverviewSource(now = new Date()): Promise<OverviewSourc
     recent,
     nowIso: now.toISOString(),
   };
-}
-
-export async function getOverviewData(now = new Date()): Promise<OverviewData> {
-  const source = await getOverviewSource(now);
-  return computeOverview(source.vendas, source.clientes, source.goals, now, source.agenda);
 }
