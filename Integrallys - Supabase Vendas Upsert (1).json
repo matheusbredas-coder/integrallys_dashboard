@@ -130,7 +130,7 @@
     },
     {
       "parameters": {
-        "url": "https://ujlkfxufrlwqxhmbhqeh.supabase.co/rest/v1/Clientes?select=id,Nome,Data%20do%20Cadastro",
+        "url": "https://ujlkfxufrlwqxhmbhqeh.supabase.co/rest/v1/Clientes?select=id,Nome,Data%20do%20Cadastro,gestek_id",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -169,7 +169,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// ─────────────────────────────────────────────────────────────────────────────\n// Code node: \"Split Patients\"\n//\n// Joins Supabase Clientes <-> Gestek clientes by NORMALIZED NAME.\n//\n// WHY name and not id: Supabase \\\"Clientes\\\".id is a legacy sequential text id\n// (\\\"330\\\", \\\"329\\\"...), while Gestek ids are Mongo ObjectIds\n// (\\\"691486a8437ac8cf1e29f38d\\\"). They never overlap, so id-matching produced\n// zero matches. Normalized name matches ~100% of fetched clients.\n//\n// Upstream:\n//   $('Build Clientes Map').first().json  → { idMap, nameToId, duplicates }\n//   $('Read Supabase Patients').all()     → Clientes rows { id, Nome, ... }\n//\n// Output (single item):\n//   {\n//     gestekIdToSupabaseId: { [gestekObjectId]: supabaseId },  // resolved matches\n//     supabaseNameToId:     { [normName]: supabaseId },        // fallback lookups\n//     existingGestekIds:    [gestekId, ...],\n//     newGestekClients:     [{ id, nome, dataCriacao }],       // sync mode INSERTs these\n//     orphanSupabasePatients: [{ id, Nome }],                  // in Supabase, not in Gestek\n//     duplicates: [...]                                         // name-collision warnings\n//   }\n// ─────────────────────────────────────────────────────────────────────────────\n\nconst normalize = (s) =>\n  (s || '')\n    .trim()\n    .replace(/\\s+/g, ' ')\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .toLowerCase();\n\nconst { idMap, nameToId, duplicates } = $('Build Clientes Map').first().json;\nconst supabasePatients = $('Read Supabase Patients').all().map((i) => i.json);\n\n// Build normalized-name -> Supabase id (first row wins; warn on collisions).\nconst supabaseNameToId = {};\nconst supabaseDuplicates = [];\nfor (const p of supabasePatients) {\n  if (!p.id) continue;\n  const key = normalize(p.Nome);\n  if (!key) continue;\n  if (supabaseNameToId[key] && supabaseNameToId[key] !== p.id) {\n    supabaseDuplicates.push({\n      level: 'warn',\n      message: `Duplicate Supabase name \\\"${key}\\\" — kept id ${supabaseNameToId[key]}, ignored ${p.id}`,\n    });\n  } else {\n    supabaseNameToId[key] = p.id;\n  }\n}\n\n// Resolve each Gestek client to a Supabase id by name.\nconst gestekIdToSupabaseId = {};\nconst existingGestekIds = [];\nconst newGestekClients = [];\nfor (const [gestekId, info] of Object.entries(idMap)) {\n  const key = normalize(info.nome);\n  const supaId = key ? supabaseNameToId[key] : undefined;\n  if (supaId) {\n    gestekIdToSupabaseId[gestekId] = supaId;\n    existingGestekIds.push(gestekId);\n  } else {\n    newGestekClients.push({\n      id: gestekId,\n      nome: info.nome,\n      dataCriacao: info.dataCriacao,\n    });\n  }\n}\n\n// Supabase rows whose name has no Gestek counterpart.\nconst orphanSupabasePatients = [];\nfor (const p of supabasePatients) {\n  const key = normalize(p.Nome);\n  if (key && !nameToId[key]) {\n    orphanSupabasePatients.push({ id: p.id, Nome: p.Nome });\n  }\n}\n\nreturn [\n  {\n    json: {\n      gestekIdToSupabaseId,\n      supabaseNameToId,\n      existingGestekIds,\n      newGestekClients,\n      orphanSupabasePatients,\n      duplicates: [...(duplicates || []), ...supabaseDuplicates],\n    },\n  },\n];\n"
+        "jsCode": "// ─────────────────────────────────────────────────────────────────────────────\n// Code node: \"Split Patients\"\n//\n// Joins Supabase Clientes <-> Gestek clientes by gestek_id (the stable Gestek\n// ObjectId stored on each Clientes row). This is collision-proof: each Gestek\n// client maps to exactly one Supabase row.\n//\n// Rows with a NULL gestek_id (legacy duplicates / name typos) simply don't match\n// and are reported as orphans — deterministically, with no name-order ambiguity.\n// A normalized-name map is still built for downstream last-resort fallback.\n//\n// Upstream:\n//   $('Build Clientes Map').first().json  → { idMap, nameToId, duplicates }\n//   $('Read Supabase Patients').all()     → Clientes rows { id, Nome, gestek_id, ... }\n// ─────────────────────────────────────────────────────────────────────────────\n\nconst normalize = (s) =>\n  (s || '')\n    .trim()\n    .replace(/\\s+/g, ' ')\n    .normalize('NFD')\n    .replace(/[̀-ͯ]/g, '')\n    .toLowerCase();\n\nconst { idMap, nameToId, duplicates } = $('Build Clientes Map').first().json;\nconst supabasePatients = $('Read Supabase Patients').all().map((i) => i.json);\n\n// gestek_id -> Supabase id (primary key for matching) + a name fallback map\nconst supabaseByGestekId = {};\nconst supabaseNameToId = {};\nfor (const p of supabasePatients) {\n  if (!p.id) continue;\n  if (p.gestek_id) supabaseByGestekId[p.gestek_id] = p.id;\n  const key = normalize(p.Nome);\n  if (key && !supabaseNameToId[key]) supabaseNameToId[key] = p.id;\n}\n\n// Resolve each Gestek client to a Supabase row by gestek_id.\nconst gestekIdToSupabaseId = {};\nconst existingGestekIds = [];\nconst newGestekClients = [];\nfor (const [gestekId, info] of Object.entries(idMap)) {\n  const supaId = supabaseByGestekId[gestekId];\n  if (supaId) {\n    gestekIdToSupabaseId[gestekId] = supaId;\n    existingGestekIds.push(gestekId);\n  } else {\n    newGestekClients.push({ id: gestekId, nome: info.nome, dataCriacao: info.dataCriacao });\n  }\n}\n\n// Supabase rows with no live Gestek counterpart (null gestek_id or stale link).\nconst orphanSupabasePatients = [];\nfor (const p of supabasePatients) {\n  if (!p.gestek_id || !idMap[p.gestek_id]) {\n    orphanSupabasePatients.push({ id: p.id, Nome: p.Nome });\n  }\n}\n\nreturn [\n  {\n    json: {\n      gestekIdToSupabaseId,\n      supabaseNameToId,\n      existingGestekIds,\n      newGestekClients,\n      orphanSupabasePatients,\n      duplicates: duplicates || [],\n    },\n  },\n];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -286,7 +286,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ $('Split Patients').first().json.newGestekClients.map(c => {\n        const d = new Date(c.dataCriacao);\n        const brt = new Date(d.getTime() - 3 * 60 * 60 * 1000);\n        const pad = n => String(n).padStart(2, '0');\n        const cadastro = `${pad(brt.getUTCDate())}/${pad(brt.getUTCMonth()+1)}/${pad(brt.getUTCFullYear()%100)} ${pad(brt.getUTCHours())}:${pad(brt.getUTCMinutes())}`;\n        return {\n          id: c.id,\n          Nome: c.nome,\n          'Data do Cadastro': cadastro\n          // Telefone Principal, Email Principal, Origem left NULL by omission\n        };\n      }) }}",
+        "jsonBody": "={{ $('Split Patients').first().json.newGestekClients.map(c => {\n        const d = new Date(c.dataCriacao);\n        const brt = new Date(d.getTime() - 3 * 60 * 60 * 1000);\n        const pad = n => String(n).padStart(2, '0');\n        const cadastro = `${pad(brt.getUTCDate())}/${pad(brt.getUTCMonth()+1)}/${pad(brt.getUTCFullYear()%100)} ${pad(brt.getUTCHours())}:${pad(brt.getUTCMinutes())}`;\n        return {\n          id: c.id,\n          gestek_id: c.id,\n          Nome: c.nome,\n          'Data do Cadastro': cadastro\n          // Telefone Principal, Email Principal, Origem left NULL by omission\n        };\n      }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -360,7 +360,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const accumulator = {};\nlet totalSalesAggregated = 0;\n\nfor (const item of $input.all()) {\n  let payload = item.json;\n  if (Array.isArray(payload)) payload = payload[0];\n\n  const vendas = (payload && payload.vendas) || [];\n  for (const venda of vendas) {\n    if (venda.status !== 1) continue;\n    if (!venda.clienteId) continue;\n\n    const id = venda.clienteId;\n    if (!accumulator[id]) {\n      accumulator[id] = {\n        nome: venda.cliente || null,\n        vendas: 0,\n        receita: 0,\n        descontos: 0,\n        procedimentos: {},\n      };\n    }\n    const acc = accumulator[id];\n    acc.vendas += 1;\n    acc.receita += Number(venda.total) || 0;\n    acc.descontos += Number(venda.desconto) || 0;\n\n    for (const it of venda.itens || []) {\n      const name = it.nome;\n      const qty = Number(it.quantidade) || 0;\n      if (!name) continue;\n      acc.procedimentos[name] = (acc.procedimentos[name] || 0) + qty;\n    }\n\n    totalSalesAggregated += 1;\n  }\n}\n\nreturn [\n  {\n    json: {\n      accumulator,\n      totalSalesAggregated,\n    },\n  },\n];"
+        "jsCode": "const accumulator = {};\nlet totalSalesAggregated = 0;\nconst seenSales = new Set();\n\nfor (const item of $input.all()) {\n  let payload = item.json;\n  if (Array.isArray(payload)) payload = payload[0];\n\n  const vendas = (payload && payload.vendas) || [];\n  for (const venda of vendas) {\n    if (venda.status !== 1) continue;\n    if (!venda.clienteId) continue;\n    if (venda.id) {\n      if (seenSales.has(venda.id)) continue;\n      seenSales.add(venda.id);\n    }\n\n    const id = venda.clienteId;\n    if (!accumulator[id]) {\n      accumulator[id] = {\n        nome: venda.cliente || null,\n        vendas: 0,\n        receita: 0,\n        descontos: 0,\n        procedimentos: {},\n      };\n    }\n    const acc = accumulator[id];\n    acc.vendas += 1;\n    acc.receita += Number(venda.total) || 0;\n    acc.descontos += Number(venda.desconto) || 0;\n\n    for (const it of venda.itens || []) {\n      const name = it.nome;\n      const qty = Number(it.quantidade) || 0;\n      if (!name) continue;\n      acc.procedimentos[name] = (acc.procedimentos[name] || 0) + qty;\n    }\n\n    totalSalesAggregated += 1;\n  }\n}\n\nreturn [\n  {\n    json: {\n      accumulator,\n      totalSalesAggregated,\n    },\n  },\n];"
       },
       "id": "14af1075-8049-4271-93f7-f7a62418b746",
       "name": "Aggregate Sales",
@@ -576,6 +576,120 @@
       ],
       "id": "7de7c2af-64d7-4814-a7db-7a1dee11a12f",
       "name": "Fetch Vendas Page"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─────────────────────────────────────────────────────────────────────────────\n// Code node: \"Build Vendas Rows\"\n//\n// Side branch off \"Fetch Vendas Page\": flattens every fetched sale, dedupes by\n// venda.id (sales can recur across month-window boundaries), resolves the buyer\n// to a Supabase Clientes id, and emits one item { rows: [...] } for upsert into\n// public.gestek_vendas (idempotent on id).\n//\n// Buyer resolution: gestek_id match → client inserted this run (id == gestekId)\n// → normalized-name fallback.\n// ─────────────────────────────────────────────────────────────────────────────\n\nconst norm = (s) =>\n  (s || '')\n    .trim()\n    .replace(/\\s+/g, ' ')\n    .normalize('NFD')\n    .replace(/[̀-ͯ]/g, '')\n    .toLowerCase();\n\nconst split = $('Split Patients').first().json;\nconst { gestekIdToSupabaseId, supabaseNameToId, newGestekClients } = split;\nconst newIdSet = new Set((newGestekClients || []).map((c) => c.id));\n\nconst num = (n) => (n == null ? null : Math.round(Number(n) * 100) / 100);\nconst ts = (s) => (s && !String(s).startsWith('0001') ? s : null);\n\nconst byId = {};\nfor (const item of $input.all()) {\n  let payload = item.json;\n  if (Array.isArray(payload)) payload = payload[0];\n\n  for (const v of (payload && payload.vendas) || []) {\n    if (!v.id) continue;\n\n    const supaId =\n      gestekIdToSupabaseId[v.clienteId] ||\n      (newIdSet.has(v.clienteId) ? v.clienteId : null) ||\n      supabaseNameToId[norm(v.cliente)] ||\n      null;\n\n    const procedimentos =\n      (v.itens || [])\n        .map((it) => [it.nome, Number(it.quantidade) || 0])\n        .filter(([n]) => n)\n        .sort((a, b) => b[1] - a[1])\n        .map(([n, q]) => `${n} (${q})`)\n        .join(', ') || null;\n\n    byId[v.id] = {\n      id: v.id,\n      codigo: v.codigo ?? null,\n      data: ts(v.data),\n      cliente: v.cliente ?? null,\n      cliente_gestek_id: v.clienteId ?? null,\n      cliente_supabase_id: supaId,\n      status: v.status ?? null,\n      procedimentos,\n      subtotal: num(v.subtotal),\n      desconto: num(v.desconto),\n      valor_desconto: num(v.valorDesconto),\n      tipo_desconto: v.tipoDesconto ?? null,\n      total: num(v.total),\n      valor_pago: num(v.valorPago),\n      valor_taxas_cartao: num(v.valorTaxasCartao),\n      profissional: v.profissional ?? null,\n      observacoes: v.observacoes ?? null,\n      itens: v.itens ?? [],\n      pagamentos: v.pagamentos ?? [],\n      data_criacao: ts(v.dataCriacao),\n      data_ultima_alteracao: ts(v.dataUltimaAlteracao),\n    };\n  }\n}\n\nreturn [{ json: { rows: Object.values(byId) } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2592,
+        176
+      ],
+      "id": "b0000001-0000-4000-8000-00000000a001",
+      "name": "Build Vendas Rows"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ujlkfxufrlwqxhmbhqeh.supabase.co/rest/v1/gestek_vendas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.rows }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2816,
+        176
+      ],
+      "id": "b0000001-0000-4000-8000-00000000a002",
+      "name": "Upsert Vendas",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "pVCBw8cN9fdAP2xE",
+          "name": "Supabase Service Role"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gestek-sync",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        120
+      ],
+      "id": "a69434b2-2818-4f72-af7c-6b1eadafdb56",
+      "name": "Sync Webhook",
+      "webhookId": "17f77eed-6703-4aef-ad9b-f3df40eb959a"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9f7eb13d-cafb-4eea-808b-a48255c55544",
+              "name": "trigger",
+              "value": "webhook",
+              "type": "string"
+            },
+            {
+              "id": "fdf14049-b34a-40ca-b52b-a59e1ca82016",
+              "name": "mode",
+              "value": "sync",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -340,
+        120
+      ],
+      "id": "54d57304-e882-4019-80b2-1315ae699887",
+      "name": "Sync Params"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $('Build Run Summary').first().json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        3936,
+        -256
+      ],
+      "id": "ae00f306-aa91-47d0-9c45-d7fe139ba04e",
+      "name": "Respond Summary"
     }
   ],
   "pinData": {
@@ -817,6 +931,55 @@
         [
           {
             "node": "Aggregate Sales",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Vendas Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Vendas Rows": {
+      "main": [
+        [
+          {
+            "node": "Upsert Vendas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Webhook": {
+      "main": [
+        [
+          {
+            "node": "Sync Params",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Params": {
+      "main": [
+        [
+          {
+            "node": "Init Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Summary as Output": {
+      "main": [
+        [
+          {
+            "node": "Respond Summary",
             "type": "main",
             "index": 0
           }
