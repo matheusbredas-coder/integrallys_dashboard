@@ -3,6 +3,10 @@
 Premium dark/gold clinic CRM (Next.js 16 + Supabase + Anthropic). Branch: **`build/foundation`**.
 Secrets live in **`.env`** (NOT `.env.local`) — load with `--env-file=.env`. Never print secret values.
 
+**🚀 LIVE on Vercel:** https://integrallys-crm.vercel.app (project `pedro-bellumat-s-projects/integrallys-crm`, deployed via Vercel CLI; 4 env vars set in Production: Supabase URL/anon/service + Anthropic). Deploy: `vercel --prod`. Prod verified 2026-06-04 (login → dashboard real data, patients, **sync button disabled**, 0 console errors).
+
+**⛔ Gestek Sync is GATED OFF (`SYNC_ENABLED` unset = disabled).** The N8N worker behind the webhook **mass-duplicates patients** — a live test inserted 100 dup rows (since reverted; DB restored to 337). Do NOT set `SYNC_ENABLED=true` until the N8N worker is fixed + safely validated. See [memory: gestek-sync-massdup-incident] and the section below.
+
 ## What's done
 - **Plan 1** (auth + app shell + data layer), **Plan 2** (Overview page), **Plan 3** (Patients table + detail drawer) — all implemented, committed, and **live-verified** via Playwright with real data (login → gold dashboard, real numbers, 0 console errors).
 - **Plan 4** (text-to-SQL AI chat) — **DONE & live-verified** on `build/foundation`. 30 Vitest tests pass; `npm run build` succeeds; `/api/chat` is a dynamic route. Two-layer SQL safety: TS guard ([src/lib/sql-guard.ts](src/lib/sql-guard.ts)) + txn-level read-only inside RPC `run_readonly_select`.
