@@ -46,6 +46,20 @@ describe("runGestekSync", () => {
     expect(upserted).toHaveLength(0);
   });
 
+  it("skips inserting a Gestek client whose name already exists in Supabase (warns instead)", async () => {
+    const supa: SupabasePatient[] = [{ id: "5", Nome: "LAIZA MICHELLE DIAS", gestek_id: "g-keep" }];
+    const { store, inserted } = makeStore(supa);
+    // Gestek has the matched one (g-keep) plus a DUPLICATE record with same name, different id
+    const clientes = [{ id: "g-keep", nome: "LAIZA MICHELLE DIAS" }, { id: "g-dup", nome: "LAIZA MICHELLE DIAS" }];
+    const r = await runGestekSync({ dryRun: false }, { store, gestek: gestek(clientes, []), now: () => new Date() });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.summary?.patients_inserted).toBe(0); // dup record skipped
+      expect(r.warnings.some((w) => (w.message || "").includes("already exists"))).toBe(true);
+    }
+    expect(inserted).toHaveLength(0);
+  });
+
   it("guard trips on an implausible number of new patients (writes nothing)", async () => {
     const { store, inserted } = makeStore(existing);
     // every Gestek client looks new (none match existing gestek_id) -> 100 new

@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { GestekCliente, GestekVenda, NewPatientRow, SyncResult, SyncSummary, SyncWarning } from "./types";
 import type { SyncStore } from "./store";
-import { splitPatients } from "./match";
+import { splitPatients, normalizeName } from "./match";
 import { mapVendaToRow } from "./sales";
 import { createSyncStore } from "./store";
 import { fetchAllClientes, fetchAllVendas } from "./gestek-client";
@@ -40,19 +40,32 @@ export async function runGestekSync(opts: { dryRun?: boolean }, deps?: RunDeps):
   const patients = await store.readPatients();
   const split = splitPatients(clientes, patients);
 
+  // Safety: never auto-create a patient whose name already exists in Supabase (prevents
+  // duplicating people who exist twice in Gestek, e.g. the known LAIZA/VINICIUS records).
+  // Such collisions become warnings for manual review instead of inserts.
+  const warnings: SyncWarning[] = [...split.duplicates];
+  const newClients = split.newGestekClients.filter((c) => {
+    const collide = split.supabaseNameToId[normalizeName(c.nome)];
+    if (collide) {
+      warnings.push({ level: "warn", message: `Skipped insert: "${c.nome}" already exists in Supabase (id ${collide}); Gestek has a duplicate record (${c.id})` });
+      return false;
+    }
+    return true;
+  });
+
   // Safety guard: never mass-insert (the prior n8n incident). Only applies once we already have data.
   const limit = Math.max(15, Math.round(patients.length * 0.15));
-  if (patients.length >= 50 && split.newGestekClients.length > limit) {
+  if (patients.length >= 50 && newClients.length > limit) {
     const completed_at = now().toISOString();
-    if (!dryRun) await store.logError(run_id, completed_at, `guard: ${split.newGestekClients.length} new > ${limit}`);
+    if (!dryRun) await store.logError(run_id, completed_at, `guard: ${newClients.length} new > ${limit}`);
     return {
       ok: false, code: "guard_tripped",
-      message: `Aborted: ${split.newGestekClients.length} new patients exceeds the safe limit of ${limit}. Matching may be broken — nothing was written.`,
-      summary: { run_id, dryRun, total_clientes: clientes.length, patients_inserted: split.newGestekClients.length },
+      message: `Aborted: ${newClients.length} new patients exceeds the safe limit of ${limit}. Matching may be broken — nothing was written.`,
+      summary: { run_id, dryRun, total_clientes: clientes.length, patients_inserted: newClients.length },
     };
   }
 
-  const newRows: NewPatientRow[] = split.newGestekClients.map((c: GestekCliente) => ({
+  const newRows: NewPatientRow[] = newClients.map((c: GestekCliente) => ({
     id: c.id, gestek_id: c.id, Nome: c.nome ?? "", "Data do Cadastro": fmtCadastro(c.dataCriacao),
   }));
 
@@ -82,11 +95,10 @@ export async function runGestekSync(opts: { dryRun?: boolean }, deps?: RunDeps):
   }
 
   const completed_at = now().toISOString();
-  const warnings: SyncWarning[] = split.duplicates;
   const summary: SyncSummary = {
     run_id, mode: "sync", dryRun, started_at, completed_at,
     total_clientes: clientes.length, patients_inserted: newRows.length, vendas_upserted: vendaRows.length,
-    orphan_supabase_patients: split.orphans.length, duplicate_name_warnings: split.duplicates.length,
+    orphan_supabase_patients: split.orphans.length, duplicate_name_warnings: warnings.length,
   };
   if (!dryRun) await store.logComplete(run_id, completed_at, summary, warnings);
   return { ok: true, summary, warnings };
