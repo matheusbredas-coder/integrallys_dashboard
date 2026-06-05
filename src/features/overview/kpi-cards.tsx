@@ -28,7 +28,7 @@ function AnimatedValue({ value, kind }: { value: number; kind: "currency" | "int
 export function KpiCards({ kpi }: { kpi: Kpi }) {
   const items = [
     { label: "Receita (faturada)", value: kpi.revenueBilled, kind: "currency" as const },
-    { label: "Pacientes", value: kpi.patients, kind: "int" as const },
+    { label: "Atendimentos", value: kpi.atendimentos, kind: "int" as const },
     { label: "Vendas", value: kpi.sales, kind: "int" as const },
     { label: "Ticket médio", value: kpi.avgTicket, kind: "currency" as const },
   ];
