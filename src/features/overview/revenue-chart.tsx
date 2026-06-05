@@ -1,14 +1,18 @@
 "use client";
+import { useEffect, useState } from "react";
 import { ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import type { ValueType } from "recharts/types/component/DefaultTooltipContent";
 import type { RevenuePoint } from "./types";
 
 export function RevenueChart({ data }: { data: RevenuePoint[] }) {
+  const [chartData, setChartData] = useState<RevenuePoint[]>([]);
+  useEffect(() => { setChartData(data); }, [data]);
+
   return (
     <div className="card" style={{ padding: 20 }}>
       <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Receita no período</h3>
       <ResponsiveContainer width="100%" height={260}>
-        <ComposedChart key={data.map((d) => d.label).join(",")} data={data}>
+        <ComposedChart data={chartData}>
           <defs>
             <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#f0d488" /><stop offset="100%" stopColor="#9a7b2e" />
