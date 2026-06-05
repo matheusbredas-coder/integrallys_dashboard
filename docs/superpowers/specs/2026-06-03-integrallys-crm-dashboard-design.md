@@ -235,8 +235,34 @@ Each unit has one clear responsibility, a defined interface, and is independentl
 - **Marketing data:** the `/marketing` route and a future `campaigns`-type table.
 - **Revenue history:** already seeded via `metric_snapshots`.
 
+## 15. Addendum (2026-06-04) — `gestek_vendas` dated-sales source
+
+A new Supabase table **`public.gestek_vendas`** (838 rows, all `status = 1`) provides
+**dated** sales transactions, superseding the all-time-only metric columns for anything
+time-based. This **replaces the `metric_snapshots` workaround** — we have real history.
+
+**Key columns:** `data` (timestamptz, sale date), `cliente_supabase_id` (text FK → `Clientes.id`),
+`status` (int; 1 = completed sale), `procedimentos` (text), `subtotal`/`desconto`/`total`/`valor_pago`
+(numeric), `profissional` (text), `itens`/`pagamentos` (jsonb), plus `codigo`, `cliente`, timestamps.
+
+**Decisions (data-driven from real values):**
+- **Source of truth:** `gestek_vendas` for all dated revenue/sales metrics; `Clientes`
+  (`clientes_view`) for patient profile/contact/origin/cadastro. They reconcile at **271 buyers**.
+- **Revenue definition:** headline **`total`** (billed, net of discount ≈ R$424k); also surface
+  **`valor_pago`** (collected ≈ R$408k) and **outstanding** (`total − valor_pago` ≈ R$16k).
+- **Date range:** Jul 2025 → Jun 2026 (~11 months) → real **monthly revenue chart** + working
+  **monthly gauges** (revenue-this-month vs goal, etc.).
+- **Dropped widgets** (monolithic in real data): patients-by-origin (98% "Indicação") and
+  by-professional (single doctor).
+- **Surface scope:** `gestek_vendas` feeds the **Overview** (KPIs, monthly charts, recent-sales
+  feed, top procedures) and the **patient detail drawer** (a patient's sales history). **No
+  standalone Sales page** this iteration.
+- **New views:** `vendas_view` (typed, `status = 1`, month bucket) and `vendas_monthly`
+  (month → sales, revenue_billed, revenue_collected) for charts and the future AI.
+- **Procedures:** parse via the validated robust parser (handles commas + parens in names).
+
 ## 14. Success criteria
-- Overview loads with correct live aggregates from `clientes_view`.
+- Overview loads with correct live aggregates from `clientes_view` and `gestek_vendas`.
 - Patients page lists/sorts/filters all patients and **auto-shows a newly added column**
   with no code change.
 - Chat answers "revenue this month", "patients who did Botox", "highest-revenue patient"
