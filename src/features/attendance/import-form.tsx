@@ -1,12 +1,22 @@
 "use client";
-import { useActionState, useState } from "react";
+import { useActionState, useState, startTransition } from "react";
 import { importAttendance, type ImportFormState } from "./actions";
 
 export function AttendanceImportForm() {
   const [state, formAction, pending] = useActionState<ImportFormState, FormData>(importAttendance, {});
-  const [fileName, setFileName] = useState<string>("");
+  // Hold the File in state: React 19 resets <form action> inputs after each submission,
+  // so we can't rely on the file input keeping its value between "preview" and "apply".
+  const [file, setFile] = useState<File | null>(null);
   const summary = state.summary;
   const previewed = !!summary && !summary.applied;
+
+  const submit = (intent: "preview" | "apply") => {
+    if (!file) return;
+    const fd = new FormData();
+    fd.set("file", file);
+    fd.set("intent", intent);
+    startTransition(() => formAction(fd));
+  };
 
   const btn: React.CSSProperties = {
     background: "var(--gold)", color: "#0a0a0b", border: "none", borderRadius: 12,
@@ -17,7 +27,7 @@ export function AttendanceImportForm() {
   };
 
   return (
-    <form action={formAction} className="card" style={{ padding: 26, display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="card" style={{ padding: 26, display: "flex", flexDirection: "column", gap: 20 }}>
       <div>
         <h2 style={{ fontSize: 17, fontWeight: 700 }}>Relatório de atendimentos</h2>
         <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
@@ -33,26 +43,25 @@ export function AttendanceImportForm() {
           padding: "13px 15px", cursor: "pointer", fontSize: 14, fontWeight: 600,
         }}
       >
-        <span style={{ color: fileName ? "var(--txt)" : "var(--muted)" }}>
-          {fileName || "Escolher arquivo .xlsx…"}
+        <span style={{ color: file ? "var(--txt)" : "var(--muted)" }}>
+          {file?.name || "Escolher arquivo .xlsx…"}
         </span>
         <span className="muted" style={{ fontSize: 12 }}>procurar</span>
         <input
           name="file"
           type="file"
           accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          required
-          onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")}
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           style={{ display: "none" }}
         />
       </label>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <button type="submit" name="intent" value="preview" disabled={pending} style={{ ...btnGhost, opacity: pending ? 0.7 : 1 }}>
+        <button type="button" onClick={() => submit("preview")} disabled={pending || !file} style={{ ...btnGhost, opacity: pending || !file ? 0.6 : 1, cursor: pending || !file ? "default" : "pointer" }}>
           {pending ? "Processando…" : "Pré-visualizar"}
         </button>
         {previewed && (
-          <button type="submit" name="intent" value="apply" disabled={pending} style={{ ...btn, opacity: pending ? 0.7 : 1 }}>
+          <button type="button" onClick={() => submit("apply")} disabled={pending} style={{ ...btn, opacity: pending ? 0.7 : 1 }}>
             {pending ? "Aplicando…" : `Confirmar e aplicar (${summary!.matched})`}
           </button>
         )}
@@ -65,7 +74,7 @@ export function AttendanceImportForm() {
       </div>
 
       {summary && <Summary summary={summary} />}
-    </form>
+    </div>
   );
 }
 
