@@ -31,7 +31,7 @@ export async function runGestekSync(opts: { dryRun?: boolean }, deps?: RunDeps):
   const started_at = now().toISOString();
   let clientes: GestekCliente[];
   try {
-    if (!dryRun) await store.logStart({ run_id, started_at, trigger: "app", mode: "sync" });
+    if (!dryRun) await store.logStart({ run_id, started_at, trigger: "webhook", mode: "sync" });
     clientes = await gestek.fetchAllClientes();
   } catch (e) {
     return { ok: false, code: "gestek_error", message: e instanceof Error ? e.message : "Gestek fetch failed" };

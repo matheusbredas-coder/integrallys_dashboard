@@ -31,13 +31,16 @@ export function createSyncStore(): SyncStore {
       }
     },
     async logStart(meta) {
-      await sb.from("gestek_sync_logs").insert({ ...meta });
+      const r = await sb.from("gestek_sync_logs").insert({ ...meta });
+      if (r.error) console.warn("sync logStart failed:", r.error.message);
     },
     async logComplete(run_id, completed_at, summary, warnings) {
-      await sb.from("gestek_sync_logs").update({ completed_at, summary, warnings }).eq("run_id", run_id);
+      const r = await sb.from("gestek_sync_logs").update({ completed_at, summary, warnings }).eq("run_id", run_id);
+      if (r.error) console.warn("sync logComplete failed:", r.error.message);
     },
     async logError(run_id, completed_at, message) {
-      await sb.from("gestek_sync_logs").update({ completed_at, error: message }).eq("run_id", run_id);
+      const r = await sb.from("gestek_sync_logs").update({ completed_at, error: message }).eq("run_id", run_id);
+      if (r.error) console.warn("sync logError failed:", r.error.message);
     },
   };
 }
