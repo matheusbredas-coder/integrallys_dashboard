@@ -1,14 +1,17 @@
 import { topProcedures } from "@/lib/procedimentos";
-import type { AgendaRow, ClienteRow, Gauge, OverviewSource, ProcCount, RevenuePoint, Timeframe, VendaRow } from "./types";
+import type { AgendaRow, ClienteRow, DateRange, Gauge, Granularity, OverviewSource, ProcCount, RevenuePoint, Timeframe, VendaRow } from "./types";
 
 const TZ = "America/Sao_Paulo";
 const weekdayFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "short" });
 const dayMonthFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit" });
 const monthLabelFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", month: "short" });
 
+const DAY_MS = 86_400_000;
+
 type ZonedParts = { year: number; month: number; day: number; hour: number };
 
-export const TIMEFRAME_LABELS: Record<Timeframe, string> = {
+// Trigger label shown when a quick preset is the active selection.
+export const PRESET_LABELS: Record<Timeframe, string> = {
   today: "Hoje",
   week: "Semana atual",
   month: "Mês",
@@ -28,6 +31,7 @@ function zonedParts(date: Date): ZonedParts {
   return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour") };
 }
 
+// A UTC-midnight Date standing in for the clinic's local calendar day.
 function localDateKey(date: Date): Date {
   const z = zonedParts(date);
   return new Date(Date.UTC(z.year, z.month - 1, z.day));
@@ -43,12 +47,26 @@ function addDays(date: Date, days: number): Date {
   return copy;
 }
 
-function startOfTimeframe(now: Date, timeframe: Timeframe): Date {
+// Build a {start, end} day range for a quick preset. End stays "up to today" so the
+// presets keep matching what the dashboard previously showed.
+export function rangeForPreset(now: Date, preset: Timeframe): DateRange {
   const current = localDateKey(now);
-  if (timeframe === "today") return current;
-  if (timeframe === "week") return addDays(current, -((current.getUTCDay() + 6) % 7));
-  if (timeframe === "month") return new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1));
-  return new Date(Date.UTC(current.getUTCFullYear(), 0, 1));
+  if (preset === "today") return { start: current, end: current };
+  if (preset === "week") return { start: addDays(current, -((current.getUTCDay() + 6) % 7)), end: current };
+  if (preset === "month") return { start: new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1)), end: current };
+  return { start: new Date(Date.UTC(current.getUTCFullYear(), 0, 1)), end: current };
+}
+
+// Inclusive count of local days covered by the range (start/end are UTC-midnight keys).
+function dayCount(range: DateRange): number {
+  return Math.round((range.end.getTime() - range.start.getTime()) / DAY_MS) + 1;
+}
+
+// Pick chart granularity from the span: a single day → hourly, up to a quarter → daily,
+// anything longer → monthly.
+export function deriveGranularity(range: DateRange): Granularity {
+  if (range.start.getTime() === range.end.getTime()) return "hour";
+  return dayCount(range) <= 92 ? "day" : "month";
 }
 
 function isWithin(date: Date, start: Date, end: Date): boolean {
@@ -75,25 +93,26 @@ function monthRange(start: Date, end: Date): Date[] {
   return out;
 }
 
-function bucketLabel(date: Date, timeframe: Timeframe): string {
-  if (timeframe === "today") return `${String(date.getUTCHours()).padStart(2, "0")}h`;
-  if (timeframe === "year") {
+function bucketLabel(date: Date, granularity: Granularity, showWeekday: boolean): string {
+  if (granularity === "hour") return `${String(date.getUTCHours()).padStart(2, "0")}h`;
+  if (granularity === "month") {
     const label = monthLabelFmt.format(date).replace(/\.$/, "");
     return label.charAt(0).toUpperCase() + label.slice(1);
   }
-  if (timeframe === "week") {
+  if (showWeekday) {
     const day = weekdayFmt.format(date).replace(/\.$/, "");
     return `${day.charAt(0).toUpperCase() + day.slice(1)} ${dayMonthFmt.format(date)}`;
   }
   return dayMonthFmt.format(date);
 }
 
-function buildBuckets(timeframe: Timeframe, now: Date): RevenuePoint[] {
-  const current = localDateKey(now);
-  if (timeframe === "today") {
-    const hour = localHour(now);
-    return Array.from({ length: hour + 1 }, (_, h) => ({
-      bucket: `${current.toISOString().slice(0, 10)}-${h}`,
+function buildBuckets(range: DateRange, granularity: Granularity, now: Date): RevenuePoint[] {
+  if (granularity === "hour") {
+    const day = range.start;
+    const isToday = day.getTime() === localDateKey(now).getTime();
+    const lastHour = isToday ? localHour(now) : 23;
+    return Array.from({ length: lastHour + 1 }, (_, h) => ({
+      bucket: `${day.toISOString().slice(0, 10)}-${h}`,
       label: `${String(h).padStart(2, "0")}h`,
       revenue: 0,
       collected: 0,
@@ -102,11 +121,11 @@ function buildBuckets(timeframe: Timeframe, now: Date): RevenuePoint[] {
     }));
   }
 
-  const start = startOfTimeframe(now, timeframe);
-  const dates = timeframe === "year" ? monthRange(start, current) : rangeDates(start, current);
+  const dates = granularity === "month" ? monthRange(range.start, range.end) : rangeDates(range.start, range.end);
+  const showWeekday = granularity === "day" && dates.length <= 8;
   return dates.map((d) => ({
-    bucket: timeframe === "year" ? `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}` : d.toISOString().slice(0, 10),
-    label: bucketLabel(d, timeframe),
+    bucket: granularity === "month" ? `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}` : d.toISOString().slice(0, 10),
+    label: bucketLabel(d, granularity, showWeekday),
     revenue: 0,
     collected: 0,
     sales: 0,
@@ -114,40 +133,34 @@ function buildBuckets(timeframe: Timeframe, now: Date): RevenuePoint[] {
   }));
 }
 
-function bucketForDate(timeframe: Timeframe, date: Date): string {
-  if (timeframe === "today") return `${localDateKey(date).toISOString().slice(0, 10)}-${localHour(date)}`;
+function bucketForDate(granularity: Granularity, date: Date): string {
+  if (granularity === "hour") return `${localDateKey(date).toISOString().slice(0, 10)}-${localHour(date)}`;
   const key = localDateKey(date);
-  return timeframe === "year" ? `${key.getUTCFullYear()}-${String(key.getUTCMonth() + 1).padStart(2, "0")}` : key.toISOString().slice(0, 10);
+  return granularity === "month" ? `${key.getUTCFullYear()}-${String(key.getUTCMonth() + 1).padStart(2, "0")}` : key.toISOString().slice(0, 10);
 }
 
-function filteredSales(source: OverviewSource, timeframe: Timeframe): VendaRow[] {
-  const now = new Date(source.nowIso);
-  const start = startOfTimeframe(now, timeframe);
-  const end = localDateKey(now);
-  return source.vendas.filter((v) => isWithin(localDateKey(new Date(v.sold_at)), start, end));
+function filteredSales(source: OverviewSource, range: DateRange): VendaRow[] {
+  return source.vendas.filter((v) => isWithin(localDateKey(new Date(v.sold_at)), range.start, range.end));
 }
 
-function filteredClients(source: OverviewSource, timeframe: Timeframe): ClienteRow[] {
-  const now = new Date(source.nowIso);
-  const start = startOfTimeframe(now, timeframe);
-  const end = localDateKey(now);
-  return source.clientes.filter((c) => c.cadastro_at && isWithin(localDateKey(new Date(c.cadastro_at)), start, end));
+function filteredClients(source: OverviewSource, range: DateRange): ClienteRow[] {
+  return source.clientes.filter((c) => c.cadastro_at && isWithin(localDateKey(new Date(c.cadastro_at)), range.start, range.end));
 }
 
-function filteredAgenda(source: OverviewSource, timeframe: Timeframe): AgendaRow[] {
-  const now = new Date(source.nowIso);
-  const start = startOfTimeframe(now, timeframe);
-  const end = localDateKey(now);
-  return source.agenda.filter((a) => isWithin(localDateKey(new Date(a.appointment_at)), start, end));
+function filteredAgenda(source: OverviewSource, range: DateRange): AgendaRow[] {
+  return source.agenda.filter((a) => isWithin(localDateKey(new Date(a.appointment_at)), range.start, range.end));
 }
 
-function goalForRange(goal: number, timeframe: Timeframe, now: Date): number {
-  const current = localDateKey(now);
-  const daysInMonth = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0)).getUTCDate();
-  if (timeframe === "today") return goal / daysInMonth;
-  if (timeframe === "week") return (goal / daysInMonth) * 7;
-  if (timeframe === "month") return goal;
-  return goal * 12;
+// Prorate a monthly goal to the range by its inclusive day count.
+function goalForRange(goal: number, range: DateRange): number {
+  const daysInMonth = new Date(Date.UTC(range.start.getUTCFullYear(), range.start.getUTCMonth() + 1, 0)).getUTCDate();
+  return (goal / daysInMonth) * dayCount(range);
+}
+
+// Compact pt-BR label for the trigger button, e.g. "01/06" or "01/06 – 05/06".
+export function formatRangeLabel(range: DateRange): string {
+  if (range.start.getTime() === range.end.getTime()) return dayMonthFmt.format(range.start);
+  return `${dayMonthFmt.format(range.start)} – ${dayMonthFmt.format(range.end)}`;
 }
 
 function brl(n: number) {
@@ -158,16 +171,17 @@ function pct(a: number, b: number) {
   return b ? `${Math.round((a / b) * 100)}%` : "—";
 }
 
-export function buildOverviewSlice(source: OverviewSource, timeframe: Timeframe) {
+export function buildOverviewSlice(source: OverviewSource, range: DateRange) {
   const now = new Date(source.nowIso);
-  const vendas = filteredSales(source, timeframe);
-  const clientes = filteredClients(source, timeframe);
-  const atendimentos = filteredAgenda(source, timeframe).filter((a) => a.pendente === false).length;
-  const buckets = buildBuckets(timeframe, now);
+  const granularity = deriveGranularity(range);
+  const vendas = filteredSales(source, range);
+  const clientes = filteredClients(source, range);
+  const atendimentos = filteredAgenda(source, range).filter((a) => a.pendente === false).length;
+  const buckets = buildBuckets(range, granularity, now);
   const bucketMap = new Map(buckets.map((b) => [b.bucket, b]));
 
   for (const v of vendas) {
-    const bucket = bucketMap.get(bucketForDate(timeframe, new Date(v.sold_at)));
+    const bucket = bucketMap.get(bucketForDate(granularity, new Date(v.sold_at)));
     if (!bucket) continue;
     bucket.revenue += Number(v.total) || 0;
     bucket.collected += Number(v.valor_pago) || 0;
@@ -175,7 +189,7 @@ export function buildOverviewSlice(source: OverviewSource, timeframe: Timeframe)
   }
   for (const c of clientes) {
     if (!c.cadastro_at) continue;
-    const bucket = bucketMap.get(bucketForDate(timeframe, new Date(c.cadastro_at)));
+    const bucket = bucketMap.get(bucketForDate(granularity, new Date(c.cadastro_at)));
     if (!bucket) continue;
     bucket.newPatients += 1;
   }
@@ -187,8 +201,8 @@ export function buildOverviewSlice(source: OverviewSource, timeframe: Timeframe)
   const patients = clientes.length;
   const convertedPatients = clientes.filter((c) => (c.numero_vendas ?? 0) > 0).length;
   const avgTicket = sales ? revenueBilled / sales : 0;
-  const revenueGoal = goalForRange(source.goals.monthly_revenue_goal, timeframe, now);
-  const newPatientsGoal = goalForRange(source.goals.monthly_new_patient_goal, timeframe, now);
+  const revenueGoal = goalForRange(source.goals.monthly_revenue_goal, range);
+  const newPatientsGoal = goalForRange(source.goals.monthly_new_patient_goal, range);
   const clamp = (n: number) => Math.max(0, Math.min(1, n));
 
   const gauges: Gauge[] = [
@@ -205,3 +219,15 @@ export function buildOverviewSlice(source: OverviewSource, timeframe: Timeframe)
     topProcedures: topProcedures(vendas.map((v) => v.procedimentos), 6) as ProcCount[],
   };
 }
+
+// Calendar-grid helper for the period picker: the local "today" key and the UTC-midnight
+// first-of-month for an arbitrary month, so the popup can reuse the same day arithmetic.
+export function todayKey(now = new Date()): Date {
+  return localDateKey(now);
+}
+
+export function firstOfMonth(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+export { addDays as addDaysUTC };

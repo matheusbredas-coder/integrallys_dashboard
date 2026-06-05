@@ -10,6 +10,8 @@ export type ClienteRow = { id: string; cadastro_at: string | null; numero_vendas
 export type AgendaRow = { appointment_at: string; pendente: boolean };
 export type Goals = { monthly_revenue_goal: number; monthly_new_patient_goal: number; avg_ticket_goal: number };
 export type Timeframe = "today" | "week" | "month" | "year";
+export type DateRange = { start: Date; end: Date };
+export type Granularity = "hour" | "day" | "month";
 
 export type Kpi = {
   revenueBilled: number; revenueCollected: number; outstanding: number;

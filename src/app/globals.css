@@ -121,6 +121,168 @@ html, body {
   border-color: rgba(217,178,76,.22);
 }
 
+/* ── Período calendar popup ──────────────────────────────────────────────── */
+.timeframe-menu.period-menu {
+  left: auto;
+  right: 0;
+  width: 312px;
+  padding: 14px;
+}
+
+.period-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.period-chip {
+  flex: 1 1 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--txt);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.period-chip:hover {
+  background: rgba(217,178,76,.09);
+  border-color: rgba(217,178,76,.2);
+}
+.period-chip.active {
+  background: linear-gradient(155deg, rgba(217,178,76,.22), rgba(217,178,76,.05));
+  border-color: rgba(217,178,76,.35);
+  color: var(--gold-soft);
+}
+
+.period-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.period-month {
+  font-size: 13px;
+  font-weight: 700;
+}
+.period-nav {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--txt);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.period-nav:hover:not(:disabled) {
+  background: rgba(217,178,76,.09);
+  border-color: rgba(217,178,76,.2);
+}
+.period-nav:disabled {
+  opacity: .3;
+  cursor: default;
+}
+
+.period-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+}
+.period-weekdays span {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted2);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.period-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.period-day {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--txt);
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 0;
+  transition: background .12s ease, border-color .12s ease;
+}
+.period-day.empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+.period-day:hover:not(.disabled):not(.range-end) {
+  background: rgba(217,178,76,.12);
+}
+.period-day.disabled {
+  opacity: .22;
+  cursor: default;
+}
+.period-day.today {
+  border-color: rgba(217,178,76,.45);
+}
+.period-day.in-range {
+  background: rgba(217,178,76,.14);
+}
+.period-day.range-end {
+  background: linear-gradient(155deg, var(--gold-soft), var(--gold));
+  border-color: var(--gold-deep);
+  color: #14131a;
+  font-weight: 700;
+}
+
+.period-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.period-range-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.period-apply {
+  padding: 9px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(217,178,76,.4);
+  background: linear-gradient(155deg, rgba(217,178,76,.22), rgba(20,20,22,.6));
+  color: var(--gold-soft);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+.period-apply:hover:not(:disabled) {
+  background: linear-gradient(155deg, rgba(217,178,76,.32), rgba(20,20,22,.6));
+}
+.period-apply:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
 /* Mobile slide-in nav scaffolding (active only at <=820px) */
 .mobile-topbar { display: none; }
 .sidebar-scrim { display: none; }
@@ -134,6 +296,7 @@ html, body {
   /* leave room for the fixed mobile top bar */
   .app-main { padding: 76px 16px 28px; }
   .timeframe-picker { max-width: none; }
+  .timeframe-menu.period-menu { width: auto; left: 0; right: 0; }
 
   .mobile-topbar {
     display: flex;

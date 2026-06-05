@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildOverviewSlice } from "./timeframe";
-import type { OverviewSource } from "./types";
+import { buildOverviewSlice, rangeForPreset } from "./timeframe";
+import type { OverviewSource, Timeframe } from "./types";
 
 const source: OverviewSource = {
   vendas: [
@@ -27,12 +27,15 @@ const source: OverviewSource = {
   nowIso: "2026-06-16T12:00:00Z",
 };
 
+const now = new Date(source.nowIso);
+const slice = (preset: Timeframe) => buildOverviewSlice(source, rangeForPreset(now, preset));
+
 describe("buildOverviewSlice", () => {
   it("changes KPI and chart data by timeframe", () => {
-    const today = buildOverviewSlice(source, "today");
-    const week = buildOverviewSlice(source, "week");
-    const month = buildOverviewSlice(source, "month");
-    const year = buildOverviewSlice(source, "year");
+    const today = slice("today");
+    const week = slice("week");
+    const month = slice("month");
+    const year = slice("year");
 
     expect(today.kpi.sales).toBe(1);
     expect(week.kpi.sales).toBe(2);
@@ -57,9 +60,9 @@ describe("buildOverviewSlice", () => {
 
   it("conversion = registration-cohort patients who have ever bought", () => {
     const conv = (s: ReturnType<typeof buildOverviewSlice>) => s.gauges.find((g) => g.key === "conversion")!.pct;
-    expect(conv(buildOverviewSlice(source, "today"))).toBeCloseTo(1 / 1); // registered today: id1 (bought)
-    expect(conv(buildOverviewSlice(source, "week"))).toBeCloseTo(2 / 2);  // id1, id2 (both bought)
-    expect(conv(buildOverviewSlice(source, "month"))).toBeCloseTo(2 / 3); // id1, id2, id3 (id3 no sale)
-    expect(conv(buildOverviewSlice(source, "year"))).toBeCloseTo(3 / 4);  // id1..id4 (id3 no sale)
+    expect(conv(slice("today"))).toBeCloseTo(1 / 1); // registered today: id1 (bought)
+    expect(conv(slice("week"))).toBeCloseTo(2 / 2);  // id1, id2 (both bought)
+    expect(conv(slice("month"))).toBeCloseTo(2 / 3); // id1, id2, id3 (id3 no sale)
+    expect(conv(slice("year"))).toBeCloseTo(3 / 4);  // id1..id4 (id3 no sale)
   });
 });
