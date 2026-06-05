@@ -18,11 +18,23 @@ function unwrap<T>(body: unknown, key: string): T[] {
   return Array.isArray(arr) ? (arr as T[]) : [];
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Fetch with retry/backoff on 429 (rate limit). Honors Retry-After when present.
+async function fetchWithRetry(url: string, fetchImpl: typeof fetch, tries = 5): Promise<Response> {
+  for (let i = 0; ; i++) {
+    const res = await fetchImpl(url, { headers: authHeaders() });
+    if (res.status !== 429 || i >= tries) return res;
+    const ra = Number(res.headers.get("retry-after"));
+    await sleep(Number.isFinite(ra) && ra > 0 ? ra * 1000 : Math.min(8000, 500 * 2 ** i));
+  }
+}
+
 async function fetchPaged<T>(path: string, key: string, extraQuery: Record<string, string>, fetchImpl: typeof fetch): Promise<T[]> {
   const out: T[] = [];
   for (let pageN = 1; pageN <= MAX_PAGES; pageN++) {
     const qs = new URLSearchParams({ Limit: String(PAGE_SIZE), Page: String(pageN), ...extraQuery });
-    const res = await fetchImpl(`${BASE}${path}?${qs.toString()}`, { headers: authHeaders() });
+    const res = await fetchWithRetry(`${BASE}${path}?${qs.toString()}`, fetchImpl);
     if (!res.ok) throw new Error(`Gestek ${path} returned ${res.status}`);
     const items = unwrap<T>(await res.json(), key);
     out.push(...items);
@@ -56,7 +68,10 @@ export function monthlyWindows(startISO: string, today = new Date()): { start: s
 
 export async function fetchAllVendas(startISO: string, fetchImpl: typeof fetch = fetch): Promise<GestekVenda[]> {
   const byId = new Map<string, GestekVenda>(); // sales can recur across windows; dedupe by id
-  for (const w of monthlyWindows(startISO)) {
+  const windows = monthlyWindows(startISO);
+  for (let i = 0; i < windows.length; i++) {
+    const w = windows[i];
+    if (i > 0) await sleep(250); // throttle to stay under the rate limit
     const items = await fetchPaged<GestekVenda>("/vendas", "vendas", { DataInicio: w.start, DataFim: w.end, Status: "1" }, fetchImpl);
     for (const v of items) if (v.id) byId.set(v.id, v);
   }

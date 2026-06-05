@@ -23,6 +23,18 @@ describe("fetchAllClientes", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("nope", { status: 500 }));
     await expect(fetchAllClientes(fetchMock as unknown as typeof fetch)).rejects.toThrow();
   });
+  it("retries on 429 then succeeds", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("rate", { status: 429 }))
+      .mockImplementation(async () => page("clientes", [{ id: "c1", nome: "A" }]));
+    const promise = fetchAllClientes(fetchMock as unknown as typeof fetch);
+    await vi.runAllTimersAsync();
+    const out = await promise;
+    vi.useRealTimers();
+    expect(out).toHaveLength(1);
+    expect(fetchMock.mock.calls.length).toBe(2);
+  });
 });
 
 describe("monthlyWindows", () => {
@@ -38,11 +50,16 @@ describe("monthlyWindows", () => {
 
 describe("fetchAllVendas", () => {
   it("windows by month, sends Status=1, and dedupes by id across windows", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-03-15T00:00:00Z"));
     // every window returns the same venda -> deduped to 1 (fresh Response each call)
     const fetchMock = vi.fn().mockImplementation(async () => page("vendas", [{ id: "v1", clienteId: "c1" }]));
-    const out = await fetchAllVendas("2025-01-01", fetchMock as unknown as typeof fetch);
+    const promise = fetchAllVendas("2025-01-01", fetchMock as unknown as typeof fetch);
+    await vi.runAllTimersAsync();
+    const out = await promise;
+    vi.useRealTimers();
     expect(out).toHaveLength(1);
-    expect(fetchMock.mock.calls.length).toBeGreaterThan(1); // multiple monthly windows
+    expect(fetchMock.mock.calls.length).toBe(3); // 3 monthly windows: Jan, Feb, Mar
     const [url] = fetchMock.mock.calls[0];
     expect(String(url)).toContain("/api/vendas");
     expect(String(url)).toContain("Status=1");
