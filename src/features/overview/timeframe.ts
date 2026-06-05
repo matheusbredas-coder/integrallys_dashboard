@@ -1,5 +1,5 @@
 import { topProcedures } from "@/lib/procedimentos";
-import type { ClienteRow, Gauge, OverviewSource, ProcCount, RevenuePoint, Timeframe, VendaRow } from "./types";
+import type { AgendaRow, ClienteRow, Gauge, OverviewSource, ProcCount, RevenuePoint, Timeframe, VendaRow } from "./types";
 
 const TZ = "America/Sao_Paulo";
 const weekdayFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "short" });
@@ -134,6 +134,13 @@ function filteredClients(source: OverviewSource, timeframe: Timeframe): ClienteR
   return source.clientes.filter((c) => c.cadastro_at && isWithin(localDateKey(new Date(c.cadastro_at)), start, end));
 }
 
+function filteredAgenda(source: OverviewSource, timeframe: Timeframe): AgendaRow[] {
+  const now = new Date(source.nowIso);
+  const start = startOfTimeframe(now, timeframe);
+  const end = localDateKey(now);
+  return source.agenda.filter((a) => isWithin(localDateKey(new Date(a.appointment_at)), start, end));
+}
+
 function goalForRange(goal: number, timeframe: Timeframe, now: Date): number {
   const current = localDateKey(now);
   const daysInMonth = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0)).getUTCDate();
@@ -155,6 +162,7 @@ export function buildOverviewSlice(source: OverviewSource, timeframe: Timeframe)
   const now = new Date(source.nowIso);
   const vendas = filteredSales(source, timeframe);
   const clientes = filteredClients(source, timeframe);
+  const atendimentos = filteredAgenda(source, timeframe).filter((a) => a.pendente === false).length;
   const buckets = buildBuckets(timeframe, now);
   const bucketMap = new Map(buckets.map((b) => [b.bucket, b]));
 
@@ -190,7 +198,7 @@ export function buildOverviewSlice(source: OverviewSource, timeframe: Timeframe)
   ];
 
   return {
-    kpi: { revenueBilled, revenueCollected, outstanding: revenueBilled - revenueCollected, patients, buyers, sales, avgTicket, atendimentos: 0 },
+    kpi: { revenueBilled, revenueCollected, outstanding: revenueBilled - revenueCollected, patients, buyers, sales, avgTicket, atendimentos },
     gauges,
     chart: buckets,
     topProcedures: topProcedures(vendas.map((v) => v.procedimentos), 6) as ProcCount[],

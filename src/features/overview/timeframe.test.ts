@@ -15,7 +15,13 @@ const source: OverviewSource = {
     { id: "3", cadastro_at: "2026-06-02T09:00:00Z" },
     { id: "4", cadastro_at: "2026-05-02T09:00:00Z" },
   ],
-  agenda: [],
+  agenda: [
+    { appointment_at: "2026-06-16T14:00:00Z", pendente: false }, // today, realized
+    { appointment_at: "2026-06-16T15:00:00Z", pendente: true },  // today, pending (not counted)
+    { appointment_at: "2026-06-15T14:00:00Z", pendente: false }, // this week, realized
+    { appointment_at: "2026-06-02T14:00:00Z", pendente: false }, // this month, realized
+    { appointment_at: "2026-05-20T14:00:00Z", pendente: false }, // this year, realized
+  ],
   goals: { monthly_revenue_goal: 1000, monthly_new_patient_goal: 4, avg_ticket_goal: 100 },
   recent: [],
   nowIso: "2026-06-16T12:00:00Z",
@@ -32,6 +38,11 @@ describe("buildOverviewSlice", () => {
     expect(week.kpi.sales).toBe(2);
     expect(month.kpi.sales).toBe(3);
     expect(year.kpi.sales).toBe(4);
+
+    expect(today.kpi.atendimentos).toBe(1);  // 1 realized today (the pending one excluded)
+    expect(week.kpi.atendimentos).toBe(2);   // today + 06-15
+    expect(month.kpi.atendimentos).toBe(3);  // + 06-02
+    expect(year.kpi.atendimentos).toBe(4);   // + 05-20
 
     expect(today.topProcedures).toEqual([{ name: "BOTOX", qty: 1 }]);
     expect(week.topProcedures[0]).toEqual({ name: "BOTOX", qty: 2 });
