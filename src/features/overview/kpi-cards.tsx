@@ -4,8 +4,8 @@ import { formatBRL, formatInt } from "@/lib/format";
 import type { Kpi } from "./types";
 
 function AnimatedValue({ value, kind }: { value: number; kind: "currency" | "int" }) {
-  const [display, setDisplay] = useState(value);
-  const frameRef = useRef(value);
+  const [display, setDisplay] = useState(0);
+  const frameRef = useRef(0);
   useEffect(() => {
     const from = frameRef.current;
     const delta = value - from;
