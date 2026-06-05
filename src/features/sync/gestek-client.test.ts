@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fetchAllClientes, fetchAllVendas, monthlyWindows } from "./gestek-client";
+import { fetchAllAgenda, fetchAllClientes, fetchAllVendas, monthlyWindows } from "./gestek-client";
 
 const page = (key: string, items: unknown[]) =>
   new Response(JSON.stringify([{ [key]: items }]), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -66,5 +66,28 @@ describe("fetchAllVendas", () => {
     expect(String(url)).toContain("Status=1");
     expect(String(url)).toContain("DataInicio=2025-01-01");
     expect(String(url)).toContain("DataFim=2025-01-31");
+  });
+});
+
+describe("fetchAllAgenda", () => {
+  it("windows by month, sends Tipo=0 with datetime bounds, dedupes by id", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-03-15T00:00:00Z"));
+    // every window returns the same agendamento -> deduped to 1 (fresh Response each call)
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      page("agendamentos", [{ id: "a1", pendente: false }]),
+    );
+    const promise = fetchAllAgenda("2025-01-01", fetchMock as unknown as typeof fetch);
+    await vi.runAllTimersAsync();
+    const out = await promise;
+    vi.useRealTimers();
+    expect(out).toHaveLength(1);
+    expect(fetchMock.mock.calls.length).toBe(3); // Jan, Feb, Mar
+    const [url] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/api/agenda");
+    expect(String(url)).toContain("Tipo=0");
+    expect(String(url)).toContain("Page=0"); // 0-indexed
+    expect(String(url)).toContain("DataInicio=2025-01-01T00%3A00%3A00Z");
+    expect(String(url)).toContain("DataFim=2025-01-31T23%3A59%3A59Z");
   });
 });

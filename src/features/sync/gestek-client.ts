@@ -1,5 +1,5 @@
 import "server-only";
-import type { GestekCliente, GestekVenda } from "./types";
+import type { GestekCliente, GestekVenda, GestekAgenda } from "./types";
 
 const BASE = "https://apipublica.gestek.com.br/api";
 const PAGE_SIZE = 100;
@@ -75,6 +75,26 @@ export async function fetchAllVendas(startISO: string, fetchImpl: typeof fetch =
     if (i > 0) await sleep(250); // throttle to stay under the rate limit
     const items = await fetchPaged<GestekVenda>("/vendas", "vendas", { DataInicio: w.start, DataFim: w.end, Status: "1" }, fetchImpl);
     for (const v of items) if (v.id) byId.set(v.id, v);
+  }
+  return [...byId.values()];
+}
+
+// Agenda mirrors vendas: the date filter is capped per request, so page month-by-month
+// (each calendar month is <= 31 days). Tipo=0 returns both realized (pendente=false) and
+// upcoming (pendente=true) appointments; we store both.
+export async function fetchAllAgenda(startISO: string, fetchImpl: typeof fetch = fetch): Promise<GestekAgenda[]> {
+  const byId = new Map<string, GestekAgenda>();
+  const windows = monthlyWindows(startISO);
+  for (let i = 0; i < windows.length; i++) {
+    const w = windows[i];
+    if (i > 0) await sleep(250); // throttle to stay under the rate limit
+    const items = await fetchPaged<GestekAgenda>(
+      "/agenda",
+      "agendamentos",
+      { DataInicio: `${w.start}T00:00:00Z`, DataFim: `${w.end}T23:59:59Z`, Tipo: "0" },
+      fetchImpl,
+    );
+    for (const a of items) if (a.id) byId.set(a.id, a);
   }
   return [...byId.values()];
 }
