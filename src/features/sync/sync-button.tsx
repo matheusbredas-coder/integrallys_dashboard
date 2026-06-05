@@ -45,7 +45,7 @@ export function SyncButton({ enabled = false }: { enabled?: boolean }) {
   if (!enabled) {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, minWidth: 220 }} title="Sincronização Gestek pausada para manutenção">
-        <button disabled style={{ ...btn, background: "var(--panel-hi)", color: "var(--muted)", border: "1px solid var(--line)", cursor: "not-allowed" }}>↻ Sync</button>
+        <button disabled style={{ ...btn, background: "var(--panel-hi)", color: "var(--muted)", border: "1px solid var(--line)", cursor: "not-allowed" }}>↻ Sincronizar</button>
         <span className="muted" style={{ fontSize: 11 }}>temporariamente desabilitado</span>
       </div>
     );
@@ -53,7 +53,7 @@ export function SyncButton({ enabled = false }: { enabled?: boolean }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, minWidth: 220 }}>
-      {phase === "idle" && <button style={btn} onClick={() => setPhase("confirm")}>↻ Sync</button>}
+      {phase === "idle" && <button style={btn} onClick={() => setPhase("confirm")}>↻ Sincronizar</button>}
 
       {phase === "confirm" && (
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

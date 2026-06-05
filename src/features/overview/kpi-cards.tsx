@@ -27,10 +27,10 @@ function AnimatedValue({ value, kind }: { value: number; kind: "currency" | "int
 
 export function KpiCards({ kpi }: { kpi: Kpi }) {
   const items = [
-    { label: "Receita (faturada)", value: kpi.revenueBilled, kind: "currency" as const, sub: `${formatBRL(kpi.revenueCollected)} recebido · ${formatBRL(kpi.outstanding)} em aberto` },
-    { label: "Pacientes", value: kpi.patients, kind: "int" as const, sub: `${formatInt(kpi.buyers)} compradores` },
-    { label: "Vendas", value: kpi.sales, kind: "int" as const, sub: "concluídas" },
-    { label: "Ticket médio", value: kpi.avgTicket, kind: "currency" as const, sub: "por venda" },
+    { label: "Receita (faturada)", value: kpi.revenueBilled, kind: "currency" as const },
+    { label: "Pacientes", value: kpi.patients, kind: "int" as const },
+    { label: "Vendas", value: kpi.sales, kind: "int" as const },
+    { label: "Ticket médio", value: kpi.avgTicket, kind: "currency" as const },
   ];
   return (
     <div className="grid-4">
@@ -39,7 +39,6 @@ export function KpiCards({ kpi }: { kpi: Kpi }) {
           <div style={{ position: "absolute", right: -30, top: -30, width: 120, height: 120, borderRadius: "50%", background: "radial-gradient(circle, rgba(217,178,76,.10), transparent 70%)" }} />
           <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px" }}>{it.label}</div>
           <div style={{ fontSize: 32, fontWeight: 700, letterSpacing: "-.8px", margin: "8px 0 4px" }}><AnimatedValue value={it.value} kind={it.kind} /></div>
-          <div style={{ fontSize: 12, color: "var(--muted2)", fontWeight: 500 }}>{it.sub}</div>
         </div>
       ))}
     </div>
