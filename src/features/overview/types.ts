@@ -4,10 +4,14 @@ export type VendaRow = {
   cliente_nome: string | null;
   total: number;
   valor_pago: number;
+  valor_desconto: number;
   procedimentos: string | null;
 };
-export type ClienteRow = { id: string; cadastro_at: string | null; numero_vendas: number };
-export type AgendaRow = { appointment_at: string; pendente: boolean };
+export type ClienteRow = { id: string; cadastro_at: string | null };
+// Effective appointment outcome from agenda_view. 'agendado' = future/not yet resolved;
+// past bookings default to 'realizado' unless an agenda_attendance override says otherwise.
+export type AttendanceStatus = "realizado" | "cancelado" | "falta" | "agendado";
+export type AgendaRow = { appointment_at: string; status: AttendanceStatus };
 export type Goals = { monthly_revenue_goal: number; monthly_new_patient_goal: number; avg_ticket_goal: number };
 export type Timeframe = "today" | "week" | "month" | "year";
 export type DateRange = { start: Date; end: Date };
@@ -15,7 +19,8 @@ export type Granularity = "hour" | "day" | "month";
 
 export type Kpi = {
   revenueBilled: number; revenueCollected: number; outstanding: number;
-  patients: number; buyers: number; sales: number; avgTicket: number; atendimentos: number;
+  patients: number; buyers: number; sales: number; avgTicket: number;
+  atendimentos: number; cancelados: number; faltas: number;
 };
 export type Gauge = { key: string; label: string; sub: string; value: string; pct: number };
 export type MonthPoint = { month: string; revenue: number; collected: number; sales: number; newPatients: number };

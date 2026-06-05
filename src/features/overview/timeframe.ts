@@ -176,7 +176,10 @@ export function buildOverviewSlice(source: OverviewSource, range: DateRange) {
   const granularity = deriveGranularity(range);
   const vendas = filteredSales(source, range);
   const clientes = filteredClients(source, range);
-  const atendimentos = filteredAgenda(source, range).filter((a) => a.pendente === false).length;
+  const agenda = filteredAgenda(source, range);
+  const atendimentos = agenda.filter((a) => a.status === "realizado").length;
+  const cancelados = agenda.filter((a) => a.status === "cancelado").length;
+  const faltas = agenda.filter((a) => a.status === "falta").length;
   const buckets = buildBuckets(range, granularity, now);
   const bucketMap = new Map(buckets.map((b) => [b.bucket, b]));
 
@@ -195,25 +198,30 @@ export function buildOverviewSlice(source: OverviewSource, range: DateRange) {
   }
 
   const revenueBilled = vendas.reduce((a, v) => a + (Number(v.total) || 0), 0);
+  const discountsGiven = vendas.reduce((a, v) => a + (Number(v.valor_desconto) || 0), 0);
+  const gross = revenueBilled + discountsGiven; // faturamento bruto (subtotal)
   const revenueCollected = vendas.reduce((a, v) => a + (Number(v.valor_pago) || 0), 0);
   const sales = vendas.length;
   const buyers = new Set(vendas.map((v) => v.cliente_supabase_id).filter(Boolean)).size;
   const patients = clientes.length;
-  const convertedPatients = clientes.filter((c) => (c.numero_vendas ?? 0) > 0).length;
   const avgTicket = sales ? revenueBilled / sales : 0;
   const revenueGoal = goalForRange(source.goals.monthly_revenue_goal, range);
   const newPatientsGoal = goalForRange(source.goals.monthly_new_patient_goal, range);
   const clamp = (n: number) => Math.max(0, Math.min(1, n));
 
+  // Comparecimento = realized share of resolved bookings; future (agendado) is excluded.
+  const resolved = atendimentos + cancelados + faltas;
+
   const gauges: Gauge[] = [
     { key: "revenue", label: "Meta de receita", sub: "No período selecionado", value: brl(revenueBilled), pct: clamp(revenueBilled / (revenueGoal || 1)) },
     { key: "newPatients", label: "Novos pacientes", sub: "No período selecionado", value: String(patients), pct: clamp(patients / (newPatientsGoal || 1)) },
-    { key: "conversion", label: "Conversão", sub: "Novos pacientes que compraram", value: pct(convertedPatients, patients), pct: clamp(patients ? convertedPatients / patients : 0) },
+    { key: "discounts", label: "Descontos", sub: "% do faturamento bruto", value: brl(discountsGiven), pct: clamp(gross ? discountsGiven / gross : 0) },
     { key: "avgTicket", label: "Ticket médio", sub: `Meta: R$ ${source.goals.avg_ticket_goal}`, value: brl(avgTicket), pct: clamp(avgTicket / (source.goals.avg_ticket_goal || 1)) },
+    { key: "attendance", label: "Comparecimento", sub: "Realizados ÷ resolvidos", value: pct(atendimentos, resolved), pct: clamp(resolved ? atendimentos / resolved : 0) },
   ];
 
   return {
-    kpi: { revenueBilled, revenueCollected, outstanding: revenueBilled - revenueCollected, patients, buyers, sales, avgTicket, atendimentos },
+    kpi: { revenueBilled, revenueCollected, outstanding: revenueBilled - revenueCollected, patients, buyers, sales, avgTicket, atendimentos, cancelados, faltas },
     gauges,
     chart: buckets,
     topProcedures: topProcedures(vendas.map((v) => v.procedimentos), 6) as ProcCount[],
