@@ -70,7 +70,6 @@ export function ThemeToggle() {
     }}>
       <button
         type="button"
-        role="button"
         aria-label="Escuro"
         data-active={theme === "dark"}
         onClick={() => applyTheme("dark")}
@@ -80,7 +79,6 @@ export function ThemeToggle() {
       </button>
       <button
         type="button"
-        role="button"
         aria-label="Claro"
         data-active={theme === "light"}
         onClick={() => applyTheme("light")}
