@@ -4,7 +4,13 @@
 -- cannot be summed across sales. valor_desconto is always the resolved discount in
 -- reais (it equals subtotal - total), so it is the field the Overview "Descontos"
 -- gauge sums. Migration 006 exposed only `desconto`; this adds `valor_desconto`.
-create or replace view public.vendas_view as
+--
+-- Must DROP (not CREATE OR REPLACE): valor_desconto is inserted before `profissional`,
+-- which reorders the view's columns and CREATE OR REPLACE forbids that. Dropping also
+-- drops grants, so every grant is re-issued below (including crm_readonly from 005).
+drop view if exists public.vendas_view;
+
+create view public.vendas_view as
 select
   v.id,
   v.codigo,
@@ -24,3 +30,4 @@ from public.gestek_vendas v
 where v.status = 1;
 
 grant select on public.vendas_view to anon, authenticated, service_role;
+grant select on public.vendas_view to crm_readonly;  -- AI chat read-only role (migration 005)
