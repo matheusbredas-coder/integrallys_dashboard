@@ -46,6 +46,7 @@ export function ChatPanel() {
     setInput("");
     const next: Msg[] = [...msgs, { role: "user", content: q }, { role: "assistant", content: "" }];
     setMsgs(next);
+    saveMessages([...msgs, { role: "user", content: q }]);
     setBusy(true);
     try {
       const res = await fetch("/api/chat", {
@@ -60,7 +61,7 @@ export function ChatPanel() {
       for (;;) {
         const { value, done } = await reader.read();
         if (done) break;
-        const chunk = dec.decode(value);
+        const chunk = dec.decode(value, { stream: true });
         setMsgs((cur) => {
           const copy = [...cur];
           copy[copy.length - 1] = { role: "assistant", content: copy[copy.length - 1].content + chunk };
