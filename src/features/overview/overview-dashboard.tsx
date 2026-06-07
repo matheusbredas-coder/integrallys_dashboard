@@ -26,7 +26,7 @@ export function OverviewDashboard({ source, syncEnabled }: { source: OverviewSou
           <h1 style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-.6px" }}>Olá, Matheus</h1>
           <p className="muted" style={{ marginTop: 4 }}>Aqui está um resumo da sua clínica.</p>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, minWidth: 240 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, minWidth: 240, marginLeft: "auto" }}>
           <SyncButton enabled={syncEnabled} />
           <PeriodPicker
             range={period.range}
