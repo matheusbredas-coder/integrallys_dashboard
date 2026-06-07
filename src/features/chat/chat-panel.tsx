@@ -30,14 +30,16 @@ export function ChatPanel() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMsgs(loadMessages());
   }, []);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   }, [msgs]);
 
   async function send() {
@@ -89,7 +91,7 @@ export function ChatPanel() {
       </div>
 
       {msgs.length > 0 && (
-        <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div ref={scrollRef} style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
           {msgs.map((m, i) => (
             <div key={i} style={{
               alignSelf: m.role === "user" ? "flex-end" : "flex-start",
@@ -102,7 +104,6 @@ export function ChatPanel() {
               {m.content || (busy && i === msgs.length - 1 ? "…" : "")}
             </div>
           ))}
-          <div ref={endRef} />
         </div>
       )}
 

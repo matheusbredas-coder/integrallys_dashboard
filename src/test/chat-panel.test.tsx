@@ -8,8 +8,6 @@ const today = new Date().toISOString().slice(0, 10);
 beforeEach(() => {
   localStorage.clear();
   global.fetch = vi.fn();
-  // jsdom does not implement scrollIntoView
-  window.HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
 afterEach(() => {
