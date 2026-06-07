@@ -35,8 +35,8 @@ export function Gauges({ gauges }: { gauges: Gauge[] }) {
               <div style={{ fontSize: 15, fontWeight: 700 }}>{g.label}</div>
               <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px", marginTop: 10 }}>{g.value}</div>
             </div>
-            <div style={{ width: 92, height: 92, borderRadius: "50%", flex: "none", display: "flex", alignItems: "center", justifyContent: "center", background: `conic-gradient(var(--gold) ${deg}deg, #26262b 0)` }}>
-              <div style={{ width: 70, height: 70, borderRadius: "50%", background: "#141416", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700 }}>
+            <div style={{ width: 92, height: 92, borderRadius: "50%", flex: "none", display: "flex", alignItems: "center", justifyContent: "center", background: `conic-gradient(var(--gold) ${deg}deg, var(--line) 0)` }}>
+              <div style={{ width: 70, height: 70, borderRadius: "50%", background: "var(--panel-from)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700 }}>
                 {animPcts[i] >= 1 ? (
                   <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-label="Meta atingida">
                     <path d="M5 13l4 4L19 7" />
