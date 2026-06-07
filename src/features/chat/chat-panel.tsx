@@ -46,7 +46,6 @@ export function ChatPanel() {
     setInput("");
     const next: Msg[] = [...msgs, { role: "user", content: q }, { role: "assistant", content: "" }];
     setMsgs(next);
-    saveMessages(next);
     setBusy(true);
     try {
       const res = await fetch("/api/chat", {
@@ -54,6 +53,7 @@ export function ChatPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: next.slice(0, -1).map((m) => ({ role: m.role, content: m.content })) }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       if (!res.body) throw new Error("sem stream");
       const reader = res.body.getReader();
       const dec = new TextDecoder();
