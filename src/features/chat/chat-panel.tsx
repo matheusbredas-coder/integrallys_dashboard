@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -99,9 +100,21 @@ export function ChatPanel() {
               background: m.role === "user" ? "var(--gold)" : "var(--panel-hi)",
               color: m.role === "user" ? "#0a0a0b" : "var(--txt)",
               border: m.role === "user" ? "none" : "1px solid var(--line)",
-              borderRadius: 14, padding: "10px 14px", fontSize: 13.5, whiteSpace: "pre-wrap", lineHeight: 1.5,
+              borderRadius: 14, padding: "10px 14px", fontSize: 13.5, whiteSpace: m.role === "user" ? "pre-wrap" : "normal", lineHeight: 1.5,
             }}>
-              {m.content || (busy && i === msgs.length - 1 ? "…" : "")}
+              {m.role === "user"
+                ? (m.content || (busy && i === msgs.length - 1 ? "…" : ""))
+                : m.content
+                  ? <ReactMarkdown
+                      components={{
+                        p: ({ children }) => <p style={{ margin: "0 0 8px" }}>{children}</p>,
+                        ol: ({ children }) => <ol style={{ margin: "0 0 8px", paddingLeft: 20 }}>{children}</ol>,
+                        ul: ({ children }) => <ul style={{ margin: "0 0 8px", paddingLeft: 20 }}>{children}</ul>,
+                        li: ({ children }) => <li style={{ marginBottom: 4 }}>{children}</li>,
+                      }}
+                    >{m.content}</ReactMarkdown>
+                  : (busy && i === msgs.length - 1 ? "…" : "")
+              }
             </div>
           ))}
         </div>
