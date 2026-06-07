@@ -5,6 +5,7 @@ import { SyncButton } from "@/features/sync/sync-button";
 import { KpiCards } from "./kpi-cards";
 import { Gauges } from "./gauges";
 import { RevenueChart } from "./revenue-chart";
+import { ChatPanel } from "@/features/chat/chat-panel";
 import { TopProcedures } from "./top-procedures";
 import { PeriodPicker } from "./period-picker";
 import { buildOverviewSlice, rangeForPreset } from "./timeframe";
@@ -40,6 +41,7 @@ export function OverviewDashboard({ source, syncEnabled }: { source: OverviewSou
       <KpiCards kpi={slice.kpi} />
       <Gauges gauges={slice.gauges} />
       <RevenueChart data={slice.chart} />
+      <ChatPanel />
       <TopProcedures rows={slice.topProcedures} />
     </div>
   );
