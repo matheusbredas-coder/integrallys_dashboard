@@ -63,11 +63,7 @@ export function Sidebar({ email }: { email: string }) {
             const active = path === it.href;
             return (
               <Link key={it.href} href={it.href} onClick={() => setOpen(false)}
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px",
-                  borderRadius: 14, fontWeight: 600, fontSize: 14.5, textDecoration: "none",
-                  color: active ? "#fff" : "var(--muted)",
-                  background: active ? "linear-gradient(155deg, rgba(217,178,76,.16), rgba(20,20,22,.4))" : "transparent",
-                  boxShadow: active ? "inset 0 0 0 1px rgba(217,178,76,.25)" : "none" }}>
+                className={`nav-item${active ? " active" : ""}`}>
                 {it.label}
                 {it.soon && <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700,
                   color: "var(--gold-deep)", textTransform: "uppercase" }}>em breve</span>}
