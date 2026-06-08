@@ -9,7 +9,7 @@ const PAGE = 25;
 export function PatientsTable({ columns, rows, salesByPatient }: { columns: ColumnDef[]; rows: Row[]; salesByPatient: Record<string, PatientSale[]> }) {
   const [q, setQ] = useState("");
   const [sortKey, setSortKey] = useState<string>("Nome");
-  const [dir, setDir] = useState<1 | -1>(1);
+  const [dir, setDir] = useState<1 | -1>(-1);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Row | null>(null);
 
@@ -26,7 +26,7 @@ export function PatientsTable({ columns, rows, salesByPatient }: { columns: Colu
 
   const pageRows = filtered.slice(page * PAGE, page * PAGE + PAGE);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
-  const onSort = (k: string) => { if (k === sortKey) setDir((d) => (d === 1 ? -1 : 1)); else { setSortKey(k); setDir(1); } setPage(0); };
+  const onSort = (k: string) => { if (k === sortKey) setDir((d) => (d === 1 ? -1 : 1)); else { setSortKey(k); setDir(-1); } setPage(0); };
 
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -41,7 +41,7 @@ export function PatientsTable({ columns, rows, salesByPatient }: { columns: Colu
             <tr>{columns.map((c) => (
               <th key={c.key} onClick={() => onSort(c.key)} style={{ textAlign: "left", padding: "12px 14px", color: "var(--muted)", fontWeight: 600,
                 textTransform: "uppercase", fontSize: 11, letterSpacing: ".4px", cursor: "pointer", whiteSpace: "nowrap", borderBottom: "1px solid var(--line)" }}>
-                {c.label}{sortKey === c.key ? <span style={{ color: "var(--gold)" }}>{dir === 1 ? " ▲" : " ▼"}</span> : ""}
+                {c.label}{sortKey === c.key ? <span style={{ color: "var(--gold)" }}>{dir === -1 ? " ▲" : " ▼"}</span> : ""}
               </th>))}</tr>
           </thead>
           <tbody>
