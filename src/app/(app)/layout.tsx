@@ -1,7 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
-import { PageTransition } from "@/components/page-transition";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();
@@ -11,9 +10,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="app-shell">
       <Sidebar email={user.email ?? "Usuário"} />
-      <main className="app-main">
-        <PageTransition>{children}</PageTransition>
-      </main>
+      <main className="app-main">{children}</main>
     </div>
   );
 }
