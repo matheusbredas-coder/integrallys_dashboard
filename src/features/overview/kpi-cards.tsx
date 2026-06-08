@@ -30,7 +30,7 @@ export function KpiCards({ kpi }: { kpi: Kpi }) {
     { label: "Receita (faturada)", value: kpi.revenueBilled, kind: "currency" as const },
     { label: "Novos pacientes", value: kpi.patients, kind: "int" as const },
     { label: "Vendas", value: kpi.sales, kind: "int" as const },
-    { label: "Taxa de conversão", value: kpi.atendimentos ? (kpi.sales / kpi.atendimentos) * 100 : 0, kind: "percent" as const },
+    { label: "Taxa de conversão", value: kpi.patients ? (kpi.convertedNewPatients / kpi.patients) * 100 : 0, kind: "percent" as const },
   ];
   return (
     <div className="grid-4">

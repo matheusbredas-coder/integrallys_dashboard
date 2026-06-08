@@ -47,6 +47,13 @@ describe("buildOverviewSlice", () => {
     expect(month.kpi.atendimentos).toBe(3);  // + 06-02
     expect(year.kpi.atendimentos).toBe(4);   // + 05-20
 
+    // Taxa de conversão numerator: new patients (this period) who also bought (this period).
+    // Month range 06-01..06-16: new patients 1,2,3; buyers 1,2 → 2 converted of 3 patients.
+    expect(month.kpi.patients).toBe(3);
+    expect(month.kpi.convertedNewPatients).toBe(2);
+    // Patient 3 registered 06-02 but never bought; patient 4 (May) is outside the period.
+    expect(today.kpi.convertedNewPatients).toBe(1); // patient 1, registered + bought today
+
     expect(today.topProcedures).toEqual([{ name: "BOTOX", qty: 1 }]);
     expect(week.topProcedures[0]).toEqual({ name: "BOTOX", qty: 2 });
     expect(month.topProcedures.map((r) => r.name)).toContain("BOTOX");
@@ -71,5 +78,28 @@ describe("buildOverviewSlice", () => {
     expect(disc(slice("year")).pct).toBeCloseTo(200 / 1600);  // 1400 + 200
     expect(disc(slice("month")).label).toBe("Descontos");
     expect(slice("month").gauges.find((g) => g.key === "conversion")).toBeUndefined();
+  });
+});
+
+describe("buildOverviewSlice — hourly granularity buckets by registration time", () => {
+  // In production gestek `data` (sold_at) is date-only → local midnight, carrying no
+  // time of day. The hourly chart must bucket by `created_at` (data_criacao), the real
+  // wall-clock time the sale was registered. America/Sao_Paulo is UTC-3, so 09:00 local
+  // == 12:00Z and 14:00 local == 17:00Z.
+  const hourlySource: OverviewSource = {
+    ...source,
+    vendas: [
+      { sold_at: "2026-06-16T03:00:00Z", created_at: "2026-06-16T12:00:00Z", cliente_supabase_id: "1", cliente_nome: "ANA", total: 700, valor_pago: 700, valor_desconto: 0, procedimentos: "BOTOX (1)" },
+      { sold_at: "2026-06-16T03:00:00Z", created_at: "2026-06-16T17:00:00Z", cliente_supabase_id: "2", cliente_nome: "BIA", total: 250, valor_pago: 250, valor_desconto: 0, procedimentos: "BOTOX (1)" },
+    ],
+    nowIso: "2026-06-16T20:30:00Z", // 17:30 local
+  };
+
+  it("spreads sales across the hour they were registered, not 00h", () => {
+    const { chart } = buildOverviewSlice(hourlySource, rangeForPreset(new Date(hourlySource.nowIso), "today"), "today");
+    const byLabel = Object.fromEntries(chart.map((b) => [b.label, b.revenue]));
+    expect(byLabel["09h"]).toBe(700);
+    expect(byLabel["14h"]).toBe(250);
+    expect(byLabel["00h"] ?? 0).toBe(0);
   });
 });
