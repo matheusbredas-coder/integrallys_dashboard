@@ -20,6 +20,13 @@ export function formatInt(v: number | string | null | undefined): string {
   return n === null ? "—" : int.format(n).replace(/ /g, " ");
 }
 
+const pct = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
+
+export function formatPct(v: number | string | null | undefined): string {
+  const n = toNumber(v);
+  return n === null ? "—" : `${pct.format(n)}%`;
+}
+
 export function parseGestekDate(s: string | null | undefined): Date | null {
   if (!s) return null;
   const m = s.trim().match(/^(\d{2})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/);

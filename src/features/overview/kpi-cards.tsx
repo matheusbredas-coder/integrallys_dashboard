@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { formatBRL, formatInt } from "@/lib/format";
+import { formatBRL, formatInt, formatPct } from "@/lib/format";
 import type { Kpi } from "./types";
 
-function AnimatedValue({ value, kind }: { value: number; kind: "currency" | "int" }) {
+function AnimatedValue({ value, kind }: { value: number; kind: "currency" | "int" | "percent" }) {
   const [display, setDisplay] = useState(0);
   const frameRef = useRef(0);
   useEffect(() => {
@@ -22,7 +22,7 @@ function AnimatedValue({ value, kind }: { value: number; kind: "currency" | "int
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [value]);
-  return <>{kind === "currency" ? formatBRL(display) : formatInt(display)}</>;
+  return <>{kind === "currency" ? formatBRL(display) : kind === "percent" ? formatPct(display) : formatInt(display)}</>;
 }
 
 export function KpiCards({ kpi }: { kpi: Kpi }) {
@@ -30,7 +30,7 @@ export function KpiCards({ kpi }: { kpi: Kpi }) {
     { label: "Receita (faturada)", value: kpi.revenueBilled, kind: "currency" as const },
     { label: "Novos pacientes", value: kpi.patients, kind: "int" as const },
     { label: "Vendas", value: kpi.sales, kind: "int" as const },
-    { label: "Ticket médio", value: kpi.avgTicket, kind: "currency" as const },
+    { label: "Taxa de conversão", value: kpi.atendimentos ? (kpi.sales / kpi.atendimentos) * 100 : 0, kind: "percent" as const },
   ];
   return (
     <div className="grid-4">
