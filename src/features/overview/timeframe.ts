@@ -157,6 +157,15 @@ function goalForRange(goal: number, range: DateRange): number {
   return (goal / daysInMonth) * dayCount(range);
 }
 
+// Returns the goal for a named preset period; rounds up daily/weekly to the nearest R$ 100.
+function goalForTimeframe(monthly: number, timeframe: Timeframe | null | undefined, range: DateRange): number {
+  if (timeframe === "today") return Math.ceil(monthly / 30 / 100) * 100;
+  if (timeframe === "week") return Math.ceil((monthly / 30) * 7 / 100) * 100;
+  if (timeframe === "month") return monthly;
+  if (timeframe === "year") return monthly * 12;
+  return goalForRange(monthly, range);
+}
+
 // Compact pt-BR label for the trigger button, e.g. "01/06" or "01/06 – 05/06".
 export function formatRangeLabel(range: DateRange): string {
   if (range.start.getTime() === range.end.getTime()) return dayMonthFmt.format(range.start);
@@ -167,7 +176,7 @@ function brl(n: number) {
   return `R$ ${Math.round(n).toLocaleString("pt-BR")}`;
 }
 
-export function buildOverviewSlice(source: OverviewSource, range: DateRange) {
+export function buildOverviewSlice(source: OverviewSource, range: DateRange, timeframe?: Timeframe | null) {
   const now = new Date(source.nowIso);
   const granularity = deriveGranularity(range);
   const vendas = filteredSales(source, range);
@@ -201,7 +210,7 @@ export function buildOverviewSlice(source: OverviewSource, range: DateRange) {
   const buyers = new Set(vendas.map((v) => v.cliente_supabase_id).filter(Boolean)).size;
   const patients = clientes.length;
   const avgTicket = sales ? revenueBilled / sales : 0;
-  const revenueGoal = goalForRange(source.goals.monthly_revenue_goal, range);
+  const revenueGoal = goalForTimeframe(source.goals.monthly_revenue_goal, timeframe, range);
   const clamp = (n: number) => Math.max(0, Math.min(1, n));
 
   // Atendimentos gauge: value is the realized count; the ring is the comparecimento rate
@@ -209,7 +218,7 @@ export function buildOverviewSlice(source: OverviewSource, range: DateRange) {
   const resolved = atendimentos + cancelados + faltas;
 
   const gauges: Gauge[] = [
-    { key: "revenue", label: "Meta de receita", sub: "No período selecionado", value: brl(revenueBilled), pct: clamp(revenueBilled / (revenueGoal || 1)) },
+    { key: "revenue", label: "Meta de receita", sub: `Meta: ${brl(revenueGoal)}`, value: brl(revenueBilled), pct: clamp(revenueBilled / (revenueGoal || 1)) },
     { key: "attendance", label: "Atendimentos", sub: "Comparecimento no período", value: String(atendimentos), pct: clamp(resolved ? atendimentos / resolved : 0) },
     { key: "discounts", label: "Descontos", sub: "% do faturamento bruto", value: brl(discountsGiven), pct: clamp(gross ? discountsGiven / gross : 0) },
     { key: "avgTicket", label: "Ticket médio", sub: `Meta: R$ ${source.goals.avg_ticket_goal}`, value: brl(avgTicket), pct: clamp(avgTicket / (source.goals.avg_ticket_goal || 1)) },

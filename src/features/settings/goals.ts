@@ -4,7 +4,7 @@ import type { Goals } from "@/features/overview/types";
 // fallbacks when a key is missing from app_settings — keep in sync with the
 // seed in db/migrations/003_app_settings.sql.
 export const DEFAULT_GOALS: Goals = {
-  monthly_revenue_goal: 65000,
+  monthly_revenue_goal: 50000,
   monthly_new_patient_goal: 30,
   avg_ticket_goal: 280,
 };
