@@ -34,7 +34,6 @@ export function Gauges({ gauges }: { gauges: Gauge[] }) {
             <div>
               <div style={{ fontSize: 15, fontWeight: 700 }}>{g.label}</div>
               <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px", marginTop: 10 }}>{g.value}</div>
-              {g.sub && <div style={{ fontSize: 12, marginTop: 4, opacity: 0.6 }}>{g.sub}</div>}
             </div>
             <div style={{ width: 92, height: 92, borderRadius: "50%", flex: "none", display: "flex", alignItems: "center", justifyContent: "center", background: `conic-gradient(var(--gold) ${deg}deg, var(--line) 0)` }}>
               <div style={{ width: 70, height: 70, borderRadius: "50%", background: "var(--panel-from)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700 }}>

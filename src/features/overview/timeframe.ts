@@ -218,7 +218,7 @@ export function buildOverviewSlice(source: OverviewSource, range: DateRange, tim
   const resolved = atendimentos + cancelados + faltas;
 
   const gauges: Gauge[] = [
-    { key: "revenue", label: "Meta de receita", sub: `Meta: ${brl(revenueGoal)}`, value: brl(revenueBilled), pct: clamp(revenueBilled / (revenueGoal || 1)) },
+    { key: "revenue", label: "Meta de receita", sub: `Meta: ${brl(revenueGoal)}`, value: brl(revenueGoal), pct: clamp(revenueBilled / (revenueGoal || 1)) },
     { key: "attendance", label: "Atendimentos", sub: "Comparecimento no período", value: String(atendimentos), pct: clamp(resolved ? atendimentos / resolved : 0) },
     { key: "discounts", label: "Descontos", sub: "% do faturamento bruto", value: brl(discountsGiven), pct: clamp(gross ? discountsGiven / gross : 0) },
     { key: "avgTicket", label: "Ticket médio", sub: `Meta: R$ ${source.goals.avg_ticket_goal}`, value: brl(avgTicket), pct: clamp(avgTicket / (source.goals.avg_ticket_goal || 1)) },
