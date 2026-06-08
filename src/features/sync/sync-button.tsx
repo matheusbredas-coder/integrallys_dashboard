@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { SyncResult, SyncSummary } from "./types";
 
 type Phase = "idle" | "confirm" | "syncing" | "done" | "error";
@@ -7,6 +8,7 @@ type Phase = "idle" | "confirm" | "syncing" | "done" | "error";
 function fmt(n: unknown) { return typeof n === "number" ? n.toLocaleString("pt-BR") : "—"; }
 
 export function SyncButton({ enabled = false }: { enabled?: boolean }) {
+  const router = useRouter();
   const [phase, setPhase] = useState<Phase>("idle");
   const [summary, setSummary] = useState<SyncSummary | null>(null);
   const [warnings, setWarnings] = useState<number>(0);
@@ -24,6 +26,7 @@ export function SyncButton({ enabled = false }: { enabled?: boolean }) {
         setWarnings(data.warnings.length);
         setWarnList(data.warnings.map((w) => w.message ?? "").filter(Boolean));
         setPhase("done");
+        router.refresh(); // re-fetch Server Components so the dashboard shows the freshly synced data
       } else {
         setErr(
           !data ? "A sincronização falhou."
