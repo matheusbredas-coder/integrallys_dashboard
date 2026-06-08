@@ -1,5 +1,9 @@
 export type VendaRow = {
   sold_at: string;
+  // gestek data_criacao — the real wall-clock time the sale was registered. sold_at is
+  // date-only (local midnight), so the hourly chart buckets by this instead. Optional:
+  // null/absent on rows synced before it was exposed → hourly bucketing falls back to sold_at.
+  created_at?: string | null;
   cliente_supabase_id: string | null;
   cliente_nome: string | null;
   total: number;
@@ -19,7 +23,7 @@ export type Granularity = "hour" | "day" | "month";
 
 export type Kpi = {
   revenueBilled: number; revenueCollected: number; outstanding: number;
-  patients: number; buyers: number; sales: number; avgTicket: number;
+  patients: number; buyers: number; convertedNewPatients: number; sales: number; avgTicket: number;
   atendimentos: number; cancelados: number; faltas: number;
 };
 export type Gauge = { key: string; label: string; sub: string; value: string; pct: number };

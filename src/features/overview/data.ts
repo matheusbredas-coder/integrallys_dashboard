@@ -22,7 +22,7 @@ async function selectAll<T>(sb: SbClient, table: string, columns: string): Promi
 async function fetchOverviewSource(now = new Date()): Promise<OverviewSource> {
   const sb = createSupabaseServiceClient();
   const [vendas, clientes, agenda, settingsRes] = await Promise.all([
-    selectAll<OverviewSource["vendas"][number]>(sb, "vendas_view", "sold_at, cliente_supabase_id, cliente_nome, total, valor_pago, valor_desconto, procedimentos"),
+    selectAll<OverviewSource["vendas"][number]>(sb, "vendas_view", "sold_at, created_at, cliente_supabase_id, cliente_nome, total, valor_pago, valor_desconto, procedimentos"),
     selectAll<OverviewSource["clientes"][number]>(sb, "clientes_view", "id, cadastro_at"),
     selectAll<OverviewSource["agenda"][number]>(sb, "agenda_view", "appointment_at, status"),
     sb.from("app_settings").select("key, value"),

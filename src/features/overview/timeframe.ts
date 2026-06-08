@@ -139,6 +139,18 @@ function bucketForDate(granularity: Granularity, date: Date): string {
   return granularity === "month" ? `${key.getUTCFullYear()}-${String(key.getUTCMonth() + 1).padStart(2, "0")}` : key.toISOString().slice(0, 10);
 }
 
+// Bucket key for a sale. sold_at is date-only (local midnight), so the hourly chart
+// would dump every sale into 00h; use created_at (registration time) for the hour while
+// keeping the day from sold_at so it still lands in the selected day's buckets. Falls
+// back to sold_at when created_at is absent (rows synced before it was exposed).
+function bucketForSale(granularity: Granularity, v: VendaRow): string {
+  if (granularity === "hour") {
+    const day = localDateKey(new Date(v.sold_at)).toISOString().slice(0, 10);
+    return `${day}-${localHour(new Date(v.created_at ?? v.sold_at))}`;
+  }
+  return bucketForDate(granularity, new Date(v.sold_at));
+}
+
 function filteredSales(source: OverviewSource, range: DateRange): VendaRow[] {
   return source.vendas.filter((v) => isWithin(localDateKey(new Date(v.sold_at)), range.start, range.end));
 }
@@ -189,7 +201,7 @@ export function buildOverviewSlice(source: OverviewSource, range: DateRange, tim
   const bucketMap = new Map(buckets.map((b) => [b.bucket, b]));
 
   for (const v of vendas) {
-    const bucket = bucketMap.get(bucketForDate(granularity, new Date(v.sold_at)));
+    const bucket = bucketMap.get(bucketForSale(granularity, v));
     if (!bucket) continue;
     bucket.revenue += Number(v.total) || 0;
     bucket.collected += Number(v.valor_pago) || 0;
@@ -207,8 +219,12 @@ export function buildOverviewSlice(source: OverviewSource, range: DateRange, tim
   const gross = revenueBilled + discountsGiven; // faturamento bruto (subtotal)
   const revenueCollected = vendas.reduce((a, v) => a + (Number(v.valor_pago) || 0), 0);
   const sales = vendas.length;
-  const buyers = new Set(vendas.map((v) => v.cliente_supabase_id).filter(Boolean)).size;
+  const buyerIds = new Set(vendas.map((v) => v.cliente_supabase_id).filter(Boolean));
+  const buyers = buyerIds.size;
   const patients = clientes.length;
+  // New-patient conversion: of patients registered in this period, how many also made a
+  // sale in this period. Drives "Taxa de conversão" — a new-patient funnel, not sales/atendimentos.
+  const convertedNewPatients = clientes.filter((c) => buyerIds.has(c.id)).length;
   const avgTicket = sales ? revenueBilled / sales : 0;
   const revenueGoal = goalForTimeframe(source.goals.monthly_revenue_goal, timeframe, range);
   const clamp = (n: number) => Math.max(0, Math.min(1, n));
@@ -225,7 +241,7 @@ export function buildOverviewSlice(source: OverviewSource, range: DateRange, tim
   ];
 
   return {
-    kpi: { revenueBilled, revenueCollected, outstanding: revenueBilled - revenueCollected, patients, buyers, sales, avgTicket, atendimentos, cancelados, faltas },
+    kpi: { revenueBilled, revenueCollected, outstanding: revenueBilled - revenueCollected, patients, buyers, convertedNewPatients, sales, avgTicket, atendimentos, cancelados, faltas },
     gauges,
     chart: buckets,
     topProcedures: topProcedures(vendas.map((v) => v.procedimentos), 6) as ProcCount[],
