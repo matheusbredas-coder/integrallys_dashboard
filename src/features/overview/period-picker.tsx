@@ -20,6 +20,19 @@ function addMonths(view: Date, delta: number): Date {
   return new Date(Date.UTC(view.getUTCFullYear(), view.getUTCMonth() + delta, 1));
 }
 
+// Shift a day by `delta` months. A day that sits on the last of its month snaps onto the
+// target month's last day (so a full-month pick stays a full month); otherwise the day is
+// clamped to the target month's length (e.g. the 31st → the 28th/30th).
+function shiftDayByMonths(day: Date, delta: number): Date {
+  const y = day.getUTCFullYear();
+  const mo = day.getUTCMonth();
+  const dom = day.getUTCDate();
+  const lastOfSource = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+  const lastOfTarget = new Date(Date.UTC(y, mo + delta + 1, 0)).getUTCDate();
+  const targetDom = dom === lastOfSource ? lastOfTarget : Math.min(dom, lastOfTarget);
+  return new Date(Date.UTC(y, mo + delta, targetDom));
+}
+
 export function PeriodPicker({
   range,
   presetKey,
@@ -101,6 +114,19 @@ export function PeriodPicker({
     return null;
   }, [draftStart, draftEnd, hover]);
 
+  // Stepping months carries a completed selection along, shifting it onto the month now in
+  // view so the user can re-apply the same shape (e.g. a whole month) for the new period
+  // without re-picking. A half-finished pick (start only) is left in place so a range can
+  // still span across months.
+  const navigateMonth = (delta: number) => {
+    setViewMonth((m) => addMonths(m, delta));
+    setHover(null);
+    if (!draftStart || !draftEnd) return;
+    const clamp = (d: Date) => (d.getTime() > today.getTime() ? today : d);
+    setDraftStart(clamp(shiftDayByMonths(draftStart, delta)));
+    setDraftEnd(clamp(shiftDayByMonths(draftEnd, delta)));
+  };
+
   const applyPreset = (key: Timeframe) => {
     onApply(rangeForPreset(now, key), key);
     setOpen(false);
@@ -164,7 +190,7 @@ export function PeriodPicker({
           </div>
 
           <div className="period-cal-head">
-            <button type="button" className="period-nav" aria-label="Mês anterior" onClick={() => setViewMonth((m) => addMonths(m, -1))}>
+            <button type="button" className="period-nav" aria-label="Mês anterior" onClick={() => navigateMonth(-1)}>
               ‹
             </button>
             <span className="period-month">{monthTitle}</span>
@@ -173,7 +199,7 @@ export function PeriodPicker({
               className="period-nav"
               aria-label="Próximo mês"
               disabled={viewMonth.getTime() >= maxMonth.getTime()}
-              onClick={() => setViewMonth((m) => addMonths(m, 1))}
+              onClick={() => navigateMonth(1)}
             >
               ›
             </button>
