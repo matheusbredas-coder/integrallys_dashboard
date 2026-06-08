@@ -1,8 +1,9 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type { Row, PatientSale } from "./types";
 
-export async function getPatientsData(): Promise<{ patients: Row[]; salesByPatient: Record<string, PatientSale[]> }> {
+async function fetchPatientsData(): Promise<{ patients: Row[]; salesByPatient: Record<string, PatientSale[]> }> {
   const sb = createSupabaseServiceClient();
   const [pRes, vRes] = await Promise.all([
     sb.from("Clientes").select("*"),
@@ -19,3 +20,11 @@ export async function getPatientsData(): Promise<{ patients: Row[]; salesByPatie
   }
   return { patients: (pRes.data ?? []) as Row[], salesByPatient };
 }
+
+// Cache for 60s so revisiting Pacientes doesn't refetch every client + sale.
+// Safe to cache: fetchPatientsData uses the service-role client (no cookies).
+export const getPatientsData = unstable_cache(
+  () => fetchPatientsData(),
+  ["patients-data"],
+  { revalidate: 60, tags: ["patients"] },
+);

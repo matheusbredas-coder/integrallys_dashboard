@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type { OverviewSource, Goals } from "./types";
 import { DEFAULT_GOALS } from "@/features/settings/goals";
@@ -18,7 +19,7 @@ async function selectAll<T>(sb: SbClient, table: string, columns: string): Promi
   }
 }
 
-export async function getOverviewSource(now = new Date()): Promise<OverviewSource> {
+async function fetchOverviewSource(now = new Date()): Promise<OverviewSource> {
   const sb = createSupabaseServiceClient();
   const [vendas, clientes, agenda, settingsRes] = await Promise.all([
     selectAll<OverviewSource["vendas"][number]>(sb, "vendas_view", "sold_at, cliente_supabase_id, cliente_nome, total, valor_pago, valor_desconto, procedimentos"),
@@ -45,3 +46,12 @@ export async function getOverviewSource(now = new Date()): Promise<OverviewSourc
     nowIso: now.toISOString(),
   };
 }
+
+// Cache the heavy multi-view fetch for 60s so back-and-forth navigation
+// doesn't re-page through thousands of rows on every visit. Safe to cache:
+// fetchOverviewSource uses the service-role client (no cookies/session).
+export const getOverviewSource = unstable_cache(
+  () => fetchOverviewSource(),
+  ["overview-source"],
+  { revalidate: 60, tags: ["overview"] },
+);
