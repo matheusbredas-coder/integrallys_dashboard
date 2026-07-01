@@ -1,8 +1,12 @@
-export default function MarketingPage() {
+import { getLeadsData } from "@/features/leads/data";
+import { LeadsTable } from "@/features/leads/leads-table";
+
+export default async function MarketingPage() {
+  const leads = await getLeadsData();
   return (
-    <div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 18, width: "100%", maxWidth: 1200, marginInline: "auto" }}>
       <h1 style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-.6px" }}>Marketing</h1>
-      <p className="muted" style={{ marginTop: 8 }}>Geração de leads e campanhas em breve.</p>
+      <LeadsTable rows={leads} />
     </div>
   );
 }

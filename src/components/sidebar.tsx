@@ -5,10 +5,10 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { signOut } from "@/app/(app)/signout/actions";
 
-const ITEMS = [
+const ITEMS: Array<{ href: string; label: string; soon?: boolean }> = [
   { href: "/", label: "Visão Geral" },
   { href: "/patients", label: "Pacientes" },
-  { href: "/marketing", label: "Marketing", soon: true },
+  { href: "/marketing", label: "Marketing" },
   { href: "/settings", label: "Configurações" },
 ];
 
