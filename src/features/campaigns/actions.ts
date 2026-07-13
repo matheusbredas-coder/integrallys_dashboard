@@ -8,6 +8,7 @@ import { DEFAULT_TRACK_KEYWORDS, type TrackKeywords } from "./classify";
 import { defaultReactivationFunnel, type ReactivationFunnel } from "./funnel";
 import { EMPTY_AUDIENCE_FILTER, type AudienceFilter, type CampaignRow } from "./types";
 import type { LeadRow } from "@/features/leads/types";
+import type { PatientSale } from "@/features/patients/types";
 
 async function requireUser(): Promise<{ error: string } | null> {
   const auth = await createSupabaseServerClient();
@@ -47,6 +48,10 @@ export async function getCampaignDetail(campaignId: string): Promise<{ campaign:
   const sb = createSupabaseServiceClient();
   const [campaignRes, leadsRes] = await Promise.all([
     sb.from("campaigns").select("*").eq("id", campaignId).single(),
+    // bot_leads_view depends on migrations 017 (leads -> bot_leads rename) and 018
+    // (this campaigns table) being applied — both are pending/uncommitted as of this
+    // writing. This query is correct against the target schema; it will 404/error
+    // until those migrations land. See db/migrations/018_reactivation_campaigns.sql.
     sb.from("bot_leads_view").select("*").eq("campaign", campaignId).order("last_activity_at", { ascending: false }),
   ]);
   if (campaignRes.error || !campaignRes.data) return { error: "Campanha não encontrada." };
@@ -63,7 +68,12 @@ export async function updateCampaignFilter(campaignId: string, filter: AudienceF
   const { data: row, error: fetchError } = await sb.from("campaigns").select("keyword_rosto, keyword_medidas, keyword_reserved").eq("id", campaignId).single();
   if (fetchError || !row) return { error: "Campanha não encontrada." };
 
-  const { salesByPatient } = await getPatientsData();
+  let salesByPatient: Record<string, PatientSale[]>;
+  try {
+    ({ salesByPatient } = await getPatientsData());
+  } catch {
+    return { error: "Não foi possível carregar os dados de pacientes." };
+  }
   const keywords: TrackKeywords = { rosto: row.keyword_rosto, medidas: row.keyword_medidas, reserved: row.keyword_reserved };
   const audienceCount = buildAudiencePreview(salesByPatient, filter, keywords).length;
 
@@ -95,7 +105,12 @@ export async function previewPublish(campaignId: string): Promise<{ count: numbe
   if (error || !row) return { error: "Campanha não encontrada." };
   const campaign = row as CampaignRow;
 
-  const { salesByPatient } = await getPatientsData();
+  let salesByPatient: Record<string, PatientSale[]>;
+  try {
+    ({ salesByPatient } = await getPatientsData());
+  } catch {
+    return { error: "Não foi possível carregar os dados de pacientes." };
+  }
   const keywords = keywordsFromRow(campaign);
   const members = buildAudiencePreview(salesByPatient, campaign.audience_filter, keywords);
 
@@ -117,8 +132,15 @@ export async function publishCampaign(campaignId: string): Promise<{ ok: true; c
   if (error || !row) return { error: "Campanha não encontrada." };
   const campaign = row as CampaignRow;
 
+  if (campaign.status !== "draft") return { error: "Esta campanha já foi publicada." };
+
   // Re-verify the gate server-side — never trust a client-side preview.
-  const { salesByPatient } = await getPatientsData();
+  let salesByPatient: Record<string, PatientSale[]>;
+  try {
+    ({ salesByPatient } = await getPatientsData());
+  } catch {
+    return { error: "Não foi possível carregar os dados de pacientes." };
+  }
   const keywords = keywordsFromRow(campaign);
   const members = buildAudiencePreview(salesByPatient, campaign.audience_filter, keywords);
   if (!isFunnelReadyToPublish(campaign.tracks)) return { error: "Nem todas as mensagens da campanha foram aprovadas ainda." };
