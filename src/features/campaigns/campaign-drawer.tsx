@@ -35,6 +35,7 @@ function PublishGate({ campaignId, status }: { campaignId: string; status: Campa
     setPhase("publishing");
     const result = await publishCampaign(campaignId);
     if ("error" in result) { setReason(result.error); setPhase("blocked"); return; }
+    setCount(result.count);
     setPhase("done");
   }
 
