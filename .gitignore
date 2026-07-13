@@ -44,3 +44,6 @@ next-env.d.ts
 
 # brainstorming mockups
 .superpowers/
+
+# local worktrees for isolated feature work
+.worktrees/
