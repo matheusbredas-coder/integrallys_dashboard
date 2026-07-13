@@ -19,7 +19,8 @@ Apply these in order in the Supabase SQL editor (Dashboard → SQL Editor), or v
 14. `014_vendas_view_discount.sql` — add discount field to vendas_view
 15. `015_vendas_view_created_at.sql` — add created_at to vendas_view
 16. `016_bot_leads.sql` — Lead Qualifier Bot tables (`leads`, `lead_messages`), `leads_view`, grants, and public `bot-media` storage bucket.
-17. `018_reactivation_campaigns.sql` — campaigns table for reactivation campaign storage and bot_leads reactivation columns (track, last_template_at).
+17. *(reserved — pending: `017_*` leads → bot_leads rename, uncommitted as of this branch)*
+18. `018_reactivation_campaigns.sql` — campaigns table for reactivation campaign storage and bot_leads reactivation columns (track, last_template_at). **Depends on 017 (bot_leads rename) landing first.**
 
 After applying 001/002, sanity-check:
 ```sql

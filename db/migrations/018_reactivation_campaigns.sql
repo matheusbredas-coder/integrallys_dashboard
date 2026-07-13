@@ -1,6 +1,8 @@
 -- Reactivation campaign storage. The dashboard writes campaign drafts + audience;
 -- the bot worker (service role) reads published campaigns and sends. Copy funnel
 -- (two tracks) lives in campaigns.tracks; frozen audience in campaigns.audience_snapshot.
+-- Requires migration 017 (leads -> bot_leads rename) to have been applied first;
+-- 017 is pending/uncommitted as of this migration's authoring.
 
 create table if not exists public.campaigns (
   id                text primary key default gen_random_uuid()::text,
