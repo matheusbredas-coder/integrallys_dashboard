@@ -5,24 +5,7 @@ import type { AudienceFilter } from "./types";
 import type { PatientSale } from "@/features/patients/types";
 
 export function monthsBetween(from: Date, to: Date): number {
-  // To handle timezone issues with Date parsing, we create a reference date
-  // for one month after 'from' using explicit year/month/day parameters
-  const oneMonthAfter = new Date(from.getFullYear(), from.getMonth() + 1, from.getDate());
-
-  // If 'to' hasn't reached one month after 'from', they're in the same "month period"
-  if (to < oneMonthAfter) {
-    return 0;
-  }
-
-  // Calculate the month difference using getFullYear and getMonth
-  let months = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
-
-  // If we've reached or passed the same day-of-month in the target month, add 1
-  if (months > 0 && to.getDate() >= from.getDate()) {
-    months += 1;
-  }
-
-  return months;
+  return (to.getUTCFullYear() - from.getUTCFullYear()) * 12 + (to.getUTCMonth() - from.getUTCMonth());
 }
 
 /** Does this patient's purchase history satisfy the audience filter? */

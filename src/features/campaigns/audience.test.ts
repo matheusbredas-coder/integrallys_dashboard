@@ -14,6 +14,10 @@ describe("monthsBetween", () => {
   test("returns 0 for dates in the same month", () => {
     expect(monthsBetween(new Date("2025-01-01"), new Date("2025-01-31"))).toBe(0);
   });
+  test("does not overflow across a shorter month (Jan 31 -> Feb 28 is 1 month elapsed, not skipped)", () => {
+    expect(monthsBetween(new Date("2025-01-31"), new Date("2025-02-28"))).toBe(1);
+    expect(monthsBetween(new Date("2025-01-31"), new Date("2025-03-01"))).toBe(2);
+  });
 });
 
 describe("matchesAudienceFilter", () => {
