@@ -10,6 +10,12 @@ import { EMPTY_AUDIENCE_FILTER, type AudienceFilter, type CampaignRow } from "./
 import type { LeadRow } from "@/features/leads/types";
 import type { PatientSale } from "@/features/patients/types";
 
+// Every `campaigns` read/write below targets a table that only exists once migration
+// 018_reactivation_campaigns.sql is applied to a live database — it's committed in this
+// repo but not yet applied, and it can't be applied until migration 017 (leads ->
+// bot_leads rename, not yet a file in this repo) lands first. All actions here are inert
+// until then. See db/migrations/018_reactivation_campaigns.sql.
+
 async function requireUser(): Promise<{ error: string } | null> {
   const auth = await createSupabaseServerClient();
   const { data: { user } } = await auth.auth.getUser();
@@ -48,10 +54,12 @@ export async function getCampaignDetail(campaignId: string): Promise<{ campaign:
   const sb = createSupabaseServiceClient();
   const [campaignRes, leadsRes] = await Promise.all([
     sb.from("campaigns").select("*").eq("id", campaignId).single(),
-    // bot_leads_view depends on migrations 017 (leads -> bot_leads rename) and 018
-    // (this campaigns table) being applied — both are pending/uncommitted as of this
-    // writing. This query is correct against the target schema; it will 404/error
-    // until those migrations land. See db/migrations/018_reactivation_campaigns.sql.
+    // bot_leads_view additionally depends on migration 017 (leads -> bot_leads rename),
+    // which doesn't exist as a file in this repo yet. Migration 018 (this campaigns
+    // table) is committed here but not applied to any live database either, and its own
+    // header notes it can't be applied until 017 lands first. This query is correct
+    // against the target schema; it will 404/error until both migrations land.
+    // See db/migrations/018_reactivation_campaigns.sql.
     sb.from("bot_leads_view").select("*").eq("campaign", campaignId).order("last_activity_at", { ascending: false }),
   ]);
   if (campaignRes.error || !campaignRes.data) return { error: "Campanha não encontrada." };
