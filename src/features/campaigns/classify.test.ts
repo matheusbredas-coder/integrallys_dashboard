@@ -13,6 +13,14 @@ describe("classifyProcedure", () => {
     expect(classifyProcedure("LIPO DE PAPADA", kw)).toBe("reserved"));
   test("PEIM -> reserved", () => expect(classifyProcedure("PEIM ( SECAGEM DE MICROVASOS)", kw)).toBe("reserved"));
   test("unknown -> null", () => expect(classifyProcedure("VITAMINAS (B12 OU D3)", kw)).toBeNull());
+  test("overlapping keyword reserved > medidas priority", () => {
+    const overlappingKw = {
+      reserved: ["ALPHA"],
+      medidas: ["ALPHA BETA"],
+      rosto: [],
+    };
+    expect(classifyProcedure("ALPHA BETA COMPLEX", overlappingKw)).toBe("reserved");
+  });
 });
 
 describe("assignTrack", () => {
