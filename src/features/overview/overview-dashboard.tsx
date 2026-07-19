@@ -7,9 +7,30 @@ import { Gauges } from "./gauges";
 import { RevenueChart } from "./revenue-chart";
 import { ChatPanel } from "@/features/chat/chat-panel";
 import { TopProcedures } from "./top-procedures";
+import { RecentSales } from "./recent-sales";
 import { PeriodPicker } from "./period-picker";
 import { buildOverviewSlice, rangeForPreset } from "./timeframe";
-import type { DateRange, OverviewSource, Timeframe } from "./types";
+import type { DateRange, LastSync, OverviewSource, Timeframe } from "./types";
+
+// Freshness stamp under the sync button. The dead-cron incident showed the dashboard
+// silently drifting days stale — staleness must be visible, not inferred from missing sales.
+const STALE_AFTER_MS = 26 * 60 * 60 * 1000; // nightly cadence + slack for Vercel's imprecise cron
+
+function LastSyncNote({ lastSync, now }: { lastSync: LastSync | null; now: Date }) {
+  if (!lastSync) return null;
+  const { lastOkAt, lastError } = lastSync;
+  const stale = !lastOkAt || now.getTime() - new Date(lastOkAt).getTime() > STALE_AFTER_MS;
+  const when = lastOkAt
+    ? new Date(lastOkAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : "nunca";
+  const warn = stale || !!lastError;
+  return (
+    <span className={warn ? undefined : "muted"} style={{ fontSize: 11, color: warn ? "#e5a53a" : undefined }} title={lastError ?? undefined}>
+      Última sincronização: {when}
+      {lastError ? " · última tentativa falhou" : stale ? " · desatualizado" : ""}
+    </span>
+  );
+}
 
 export function OverviewDashboard({ source, syncEnabled, firstName }: { source: OverviewSource; syncEnabled: boolean; firstName: string }) {
   const now = useMemo(() => new Date(source.nowIso), [source.nowIso]);
@@ -29,6 +50,7 @@ export function OverviewDashboard({ source, syncEnabled, firstName }: { source: 
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, minWidth: 240, marginLeft: "auto" }}>
           <SyncButton enabled={syncEnabled} />
+          <LastSyncNote lastSync={source.lastSync} now={now} />
           <PeriodPicker
             range={period.range}
             presetKey={period.presetKey}
@@ -43,6 +65,7 @@ export function OverviewDashboard({ source, syncEnabled, firstName }: { source: 
       <RevenueChart data={slice.chart} />
       <ChatPanel />
       <TopProcedures rows={slice.topProcedures} />
+      <RecentSales rows={slice.recentSales} />
     </div>
   );
 }

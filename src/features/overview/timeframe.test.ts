@@ -23,8 +23,8 @@ const source: OverviewSource = {
     { appointment_at: "2026-05-20T14:00:00Z", status: "realizado" }, // this year, realized
   ],
   goals: { monthly_revenue_goal: 1000, monthly_new_patient_goal: 4, avg_ticket_goal: 100 },
-  recent: [],
   nowIso: "2026-06-16T12:00:00Z",
+  lastSync: null,
 };
 
 const now = new Date(source.nowIso);
@@ -63,6 +63,11 @@ describe("buildOverviewSlice", () => {
     expect(week.chart.length).toBeGreaterThan(0);
     expect(month.chart.length).toBeGreaterThan(0);
     expect(year.chart.length).toBeGreaterThan(0);
+
+    // recentSales is scoped to the period too — "today" only has ANA's sale.
+    expect(today.recentSales.map((r) => r.patient)).toEqual(["ANA"]);
+    expect(week.recentSales.map((r) => r.patient)).toEqual(["ANA", "BIA"]);
+    expect(year.recentSales.map((r) => r.patient)).toEqual(["ANA", "BIA", "BIA", "CARLA"]);
   });
 
   it("discounts = sum of valor_desconto over the period, ring = share of gross", () => {

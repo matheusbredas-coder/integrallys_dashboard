@@ -31,7 +31,9 @@ export type MonthPoint = { month: string; revenue: number; collected: number; sa
 export type RecentSale = { soldAt: string; patient: string; procedimentos: string; total: number };
 export type ProcCount = { name: string; qty: number };
 export type RevenuePoint = { bucket: string; label: string; revenue: number; collected: number; sales: number; newPatients: number };
-export type OverviewSource = { vendas: VendaRow[]; clientes: ClienteRow[]; agenda: AgendaRow[]; goals: Goals; recent: RecentSale[]; nowIso: string };
+// Derived from recent gestek_sync_logs rows — surfaces staleness/failures on the dashboard.
+export type LastSync = { lastOkAt: string | null; lastError: string | null };
+export type OverviewSource = { vendas: VendaRow[]; clientes: ClienteRow[]; agenda: AgendaRow[]; goals: Goals; nowIso: string; lastSync: LastSync | null };
 export type OverviewData = {
   kpi: Kpi; gauges: Gauge[]; months: MonthPoint[]; topProcedures: ProcCount[]; recent: RecentSale[];
 };

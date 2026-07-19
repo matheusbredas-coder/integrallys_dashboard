@@ -1,5 +1,5 @@
 import { topProcedures } from "@/lib/procedimentos";
-import type { AgendaRow, ClienteRow, DateRange, Gauge, Granularity, OverviewSource, ProcCount, RevenuePoint, Timeframe, VendaRow } from "./types";
+import type { AgendaRow, ClienteRow, DateRange, Gauge, Granularity, OverviewSource, ProcCount, RecentSale, RevenuePoint, Timeframe, VendaRow } from "./types";
 
 const TZ = "America/Sao_Paulo";
 const weekdayFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "short" });
@@ -240,11 +240,17 @@ export function buildOverviewSlice(source: OverviewSource, range: DateRange, tim
     { key: "avgTicket", label: "Ticket médio", sub: `Meta: R$ ${source.goals.avg_ticket_goal}`, value: brl(avgTicket), pct: clamp(avgTicket / (source.goals.avg_ticket_goal || 1)) },
   ];
 
+  const recentSales: RecentSale[] = [...vendas]
+    .sort((a, b) => String(b.sold_at).localeCompare(String(a.sold_at)))
+    .slice(0, 8)
+    .map((v) => ({ soldAt: String(v.sold_at), patient: v.cliente_nome ?? "—", procedimentos: v.procedimentos ?? "—", total: Number(v.total) || 0 }));
+
   return {
     kpi: { revenueBilled, revenueCollected, outstanding: revenueBilled - revenueCollected, patients, buyers, convertedNewPatients, sales, avgTicket, atendimentos, cancelados, faltas },
     gauges,
     chart: buckets,
     topProcedures: topProcedures(vendas.map((v) => v.procedimentos), 6) as ProcCount[],
+    recentSales,
   };
 }
 

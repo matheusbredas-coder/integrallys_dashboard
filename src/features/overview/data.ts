@@ -21,29 +21,31 @@ async function selectAll<T>(sb: SbClient, table: string, columns: string): Promi
 
 async function fetchOverviewSource(now = new Date()): Promise<OverviewSource> {
   const sb = createSupabaseServiceClient();
-  const [vendas, clientes, agenda, settingsRes] = await Promise.all([
+  const [vendas, clientes, agenda, settingsRes, lastSyncRes] = await Promise.all([
     selectAll<OverviewSource["vendas"][number]>(sb, "vendas_view", "sold_at, created_at, cliente_supabase_id, cliente_nome, total, valor_pago, valor_desconto, procedimentos"),
     selectAll<OverviewSource["clientes"][number]>(sb, "clientes_view", "id, cadastro_at"),
     selectAll<OverviewSource["agenda"][number]>(sb, "agenda_view", "appointment_at, status"),
     sb.from("app_settings").select("key, value"),
+    sb.from("gestek_sync_logs").select("started_at, completed_at, error").order("started_at", { ascending: false }).limit(10),
   ]);
+
+  // Last *successful* run drives the freshness stamp; an error on the newest row means
+  // the most recent attempt failed and the dashboard should warn, not just look stale.
+  const logs = (lastSyncRes.data ?? []) as { started_at: string; completed_at: string | null; error: string | null }[];
+  const lastOk = logs.find((l) => l.completed_at && !l.error);
+  const lastSync = logs.length ? { lastOkAt: lastOk?.completed_at ?? null, lastError: logs[0].error } : null;
 
   const goals: Goals = { ...DEFAULT_GOALS };
   for (const row of settingsRes.data ?? []) {
     if (row.key in goals) (goals as Record<string, number>)[row.key] = Number(row.value);
   }
-  const recent = [...vendas]
-    .sort((a, b) => String(b.sold_at).localeCompare(String(a.sold_at)))
-    .slice(0, 8)
-    .map((v) => ({ soldAt: String(v.sold_at), patient: v.cliente_nome ?? "—", procedimentos: v.procedimentos ?? "—", total: Number(v.total) || 0 }));
-
   return {
     vendas,
     clientes,
     agenda,
     goals,
-    recent,
     nowIso: now.toISOString(),
+    lastSync,
   };
 }
 
