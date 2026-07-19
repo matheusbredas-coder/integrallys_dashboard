@@ -32,5 +32,8 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // api/cron/* is excluded: Vercel Cron calls carry no session cookie and authenticate
+  // with CRON_SECRET inside the route handler — a redirect to /login here silently
+  // kills the scheduled sync.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/cron/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };
