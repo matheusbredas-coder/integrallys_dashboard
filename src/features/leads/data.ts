@@ -6,7 +6,7 @@ import type { LeadRow } from "./types";
 async function fetchLeads(): Promise<LeadRow[]> {
   const sb = createSupabaseServiceClient();
   const { data, error } = await sb
-    .from("leads_view")
+    .from("bot_leads_view")
     .select("*")
     .order("last_activity_at", { ascending: false });
   if (error) throw error;

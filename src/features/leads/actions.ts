@@ -6,7 +6,7 @@ import type { LeadMessage } from "./types";
 export async function getLeadConversation(leadId: string): Promise<LeadMessage[]> {
   const sb = createSupabaseServiceClient();
   const { data, error } = await sb
-    .from("lead_messages")
+    .from("bot_lead_messages")
     .select("id, role, content, created_at")
     .eq("lead_id", leadId)
     .order("id", { ascending: true });

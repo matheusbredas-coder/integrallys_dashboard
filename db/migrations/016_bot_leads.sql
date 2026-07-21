@@ -1,7 +1,11 @@
 -- Lead Qualifier Bot persistence. The bot (service role) is the only writer;
--- the CRM reads leads_view. cliente_id/campaign are forward-compat hooks for a
--- future reactivation campaign (unused for now).
-create table if not exists public.leads (
+-- the CRM reads bot_leads_view. cliente_id/campaign are forward-compat hooks
+-- for a future reactivation campaign (unused for now).
+--
+-- Named bot_leads/bot_lead_messages (not leads/lead_messages) because an
+-- unrelated pre-existing public.leads table (ad-attribution/scoring, bigint id)
+-- already occupies that name.
+create table if not exists public.bot_leads (
   id               text primary key,            -- phone / channel lead id
   channel          text not null,               -- 'local' | 'evolution' | ...
   name             text,
@@ -18,30 +22,30 @@ create table if not exists public.leads (
   created_at       timestamptz not null default now()
 );
 
-create table if not exists public.lead_messages (
+create table if not exists public.bot_lead_messages (
   id          bigint generated always as identity primary key,
-  lead_id     text not null references public.leads(id) on delete cascade,
+  lead_id     text not null references public.bot_leads(id) on delete cascade,
   role        text not null,                     -- 'lead' | 'bot' | 'human'
   content     text not null,
   created_at  timestamptz not null default now()
 );
 
-create index if not exists lead_messages_lead_idx on public.lead_messages (lead_id, id);
-create index if not exists leads_last_activity_idx on public.leads (last_activity_at);
+create index if not exists bot_lead_messages_lead_idx on public.bot_lead_messages (lead_id, id);
+create index if not exists bot_leads_last_activity_idx on public.bot_leads (last_activity_at);
 
-create or replace view public.leads_view as
+create or replace view public.bot_leads_view as
 select
   l.*,
   (l.block_permanent or (l.block_until is not null and l.block_until > now())) as is_blocked,
-  (select count(*) from public.lead_messages m where m.lead_id = l.id)                                as message_count,
-  (select m.content    from public.lead_messages m where m.lead_id = l.id order by m.id desc limit 1) as last_message,
-  (select m.created_at from public.lead_messages m where m.lead_id = l.id order by m.id desc limit 1) as last_message_at
-from public.leads l;
+  (select count(*) from public.bot_lead_messages m where m.lead_id = l.id)                                as message_count,
+  (select m.content    from public.bot_lead_messages m where m.lead_id = l.id order by m.id desc limit 1) as last_message,
+  (select m.created_at from public.bot_lead_messages m where m.lead_id = l.id order by m.id desc limit 1) as last_message_at
+from public.bot_leads l;
 
-grant select on public.leads, public.lead_messages, public.leads_view
+grant select on public.bot_leads, public.bot_lead_messages, public.bot_leads_view
   to anon, authenticated, service_role, crm_readonly;
-grant insert, update, delete on public.leads         to service_role;
-grant insert, update, delete on public.lead_messages to service_role;
+grant insert, update, delete on public.bot_leads         to service_role;
+grant insert, update, delete on public.bot_lead_messages to service_role;
 
 -- Public bucket for bot media (before/after, voucher cards, testimonial clips).
 insert into storage.buckets (id, name, public)
