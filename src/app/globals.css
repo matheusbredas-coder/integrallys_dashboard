@@ -103,6 +103,9 @@ html, body {
    queries can take effect — inline styles can't be overridden otherwise) */
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+/* KPI row: fluid card count (currently 5) — auto-fit avoids an orphaned last
+   card that a fixed repeat(N, 1fr) would leave when N doesn't divide evenly. */
+.grid-kpi { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 18px; }
 
 .timeframe-picker {
   position: relative;

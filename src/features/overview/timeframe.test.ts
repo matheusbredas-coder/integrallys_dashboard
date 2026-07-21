@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildOverviewSlice, rangeForPreset } from "./timeframe";
-import type { OverviewSource, Timeframe } from "./types";
+import { buildOverviewSlice, computeReturnRate, rangeForPreset } from "./timeframe";
+import type { OverviewSource, Timeframe, VendaRow } from "./types";
 
 const source: OverviewSource = {
   vendas: [
@@ -68,6 +68,15 @@ describe("buildOverviewSlice", () => {
     expect(today.recentSales.map((r) => r.patient)).toEqual(["ANA"]);
     expect(week.recentSales.map((r) => r.patient)).toEqual(["ANA", "BIA"]);
     expect(year.recentSales.map((r) => r.patient)).toEqual(["ANA", "BIA", "BIA", "CARLA"]);
+
+    // Return rate is computed over full history as-of range.end, not scoped to the preset's
+    // start — and every preset here shares the same end (today), so it's constant across them.
+    // BIA (patient "2") bought on two distinct days (06-02, 06-15) → returning; ANA and CARLA
+    // each have a single sale day.
+    for (const s of [today, week, month, year]) {
+      expect(s.kpi.patientsSeen).toBe(3);
+      expect(s.kpi.returningPatients).toBe(1);
+    }
   });
 
   it("discounts = sum of valor_desconto over the period, ring = share of gross", () => {
@@ -106,5 +115,54 @@ describe("buildOverviewSlice — hourly granularity buckets by registration time
     expect(byLabel["09h"]).toBe(700);
     expect(byLabel["14h"]).toBe(250);
     expect(byLabel["00h"] ?? 0).toBe(0);
+  });
+});
+
+describe("computeReturnRate", () => {
+  // Noon UTC keeps every fixture date well clear of the America/Sao_Paulo (UTC-3) day-boundary
+  // shift localDateKey applies, so "same day" / "different day" here reads exactly as intended.
+  const sale = (id: string | null, soldAt: string): VendaRow =>
+    ({ sold_at: `${soldAt}T12:00:00.000Z`, cliente_supabase_id: id, cliente_nome: null, total: 0, valor_pago: 0, valor_desconto: 0, procedimentos: null });
+  const asOf = new Date("2026-03-01T12:00:00.000Z");
+
+  it("counts a patient with sales on two distinct days as returning", () => {
+    const { patientsSeen, returningPatients } = computeReturnRate([sale("p1", "2026-01-05"), sale("p1", "2026-02-10")], asOf);
+    expect(patientsSeen).toBe(1);
+    expect(returningPatients).toBe(1);
+  });
+
+  it("does not count same-day multi-procedure sales as a return", () => {
+    const { patientsSeen, returningPatients } = computeReturnRate([sale("p1", "2026-01-05"), sale("p1", "2026-01-05")], asOf);
+    expect(patientsSeen).toBe(1);
+    expect(returningPatients).toBe(0);
+  });
+
+  it("counts a single-visit patient as seen but not returning", () => {
+    const { patientsSeen, returningPatients } = computeReturnRate([sale("p1", "2026-01-05")], asOf);
+    expect(patientsSeen).toBe(1);
+    expect(returningPatients).toBe(0);
+  });
+
+  it("ignores sales with no cliente_supabase_id", () => {
+    const { patientsSeen, returningPatients } = computeReturnRate([sale(null, "2026-01-05"), sale(null, "2026-02-10")], asOf);
+    expect(patientsSeen).toBe(0);
+    expect(returningPatients).toBe(0);
+  });
+
+  it("excludes sales after the asOf date", () => {
+    const { patientsSeen, returningPatients } = computeReturnRate([sale("p1", "2026-01-05"), sale("p1", "2026-04-10")], asOf);
+    expect(patientsSeen).toBe(1);
+    expect(returningPatients).toBe(0);
+  });
+
+  it("mixes returning and one-time patients correctly", () => {
+    const vendas = [
+      sale("p1", "2026-01-05"), sale("p1", "2026-02-10"), // returning
+      sale("p2", "2026-01-06"), // one-time
+      sale("p3", "2026-01-07"), sale("p3", "2026-01-08"), sale("p3", "2026-01-09"), // returning
+    ];
+    const { patientsSeen, returningPatients } = computeReturnRate(vendas, asOf);
+    expect(patientsSeen).toBe(3);
+    expect(returningPatients).toBe(2);
   });
 });

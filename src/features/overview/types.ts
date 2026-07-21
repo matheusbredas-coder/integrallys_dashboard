@@ -25,6 +25,9 @@ export type Kpi = {
   revenueBilled: number; revenueCollected: number; outstanding: number;
   patients: number; buyers: number; convertedNewPatients: number; sales: number; avgTicket: number;
   atendimentos: number; cancelados: number; faltas: number;
+  // Repeat-visit rate inputs: patientsSeen = patients with >=1 completed-sale day as of the
+  // period end; returningPatients = the subset with >=2 distinct sale days (see computeReturnRate).
+  patientsSeen: number; returningPatients: number;
 };
 export type Gauge = { key: string; label: string; sub: string; value: string; pct: number };
 export type MonthPoint = { month: string; revenue: number; collected: number; sales: number; newPatients: number };

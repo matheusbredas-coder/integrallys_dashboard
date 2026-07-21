@@ -155,6 +155,26 @@ function filteredSales(source: OverviewSource, range: DateRange): VendaRow[] {
   return source.vendas.filter((v) => isWithin(localDateKey(new Date(v.sold_at)), range.start, range.end));
 }
 
+// Repeat-visit rate: of patients with a completed sale on or before `asOf`, what share have
+// sales on 2+ distinct calendar days (same-day multi-procedure sales count as one visit).
+// Deliberately uses full history bounded by `asOf`, not the period's own range, so the rate
+// reads as "as of this period end" rather than being scoped to a single, mostly-meaningless window.
+export function computeReturnRate(vendas: VendaRow[], asOf: Date) {
+  const daysByPatient = new Map<string, Set<number>>();
+  for (const v of vendas) {
+    const id = v.cliente_supabase_id;
+    if (!id) continue;
+    const day = localDateKey(new Date(v.sold_at));
+    if (day.getTime() > asOf.getTime()) continue;
+    let days = daysByPatient.get(id);
+    if (!days) daysByPatient.set(id, (days = new Set()));
+    days.add(day.getTime());
+  }
+  let returningPatients = 0;
+  for (const days of daysByPatient.values()) if (days.size >= 2) returningPatients++;
+  return { patientsSeen: daysByPatient.size, returningPatients };
+}
+
 function filteredClients(source: OverviewSource, range: DateRange): ClienteRow[] {
   return source.clientes.filter((c) => c.cadastro_at && isWithin(localDateKey(new Date(c.cadastro_at)), range.start, range.end));
 }
@@ -226,6 +246,7 @@ export function buildOverviewSlice(source: OverviewSource, range: DateRange, tim
   // sale in this period. Drives "Taxa de conversão" — a new-patient funnel, not sales/atendimentos.
   const convertedNewPatients = clientes.filter((c) => buyerIds.has(c.id)).length;
   const avgTicket = sales ? revenueBilled / sales : 0;
+  const { patientsSeen, returningPatients } = computeReturnRate(source.vendas, range.end);
   const revenueGoal = goalForTimeframe(source.goals.monthly_revenue_goal, timeframe, range);
   const clamp = (n: number) => Math.max(0, Math.min(1, n));
 
@@ -246,7 +267,7 @@ export function buildOverviewSlice(source: OverviewSource, range: DateRange, tim
     .map((v) => ({ soldAt: String(v.sold_at), patient: v.cliente_nome ?? "—", procedimentos: v.procedimentos ?? "—", total: Number(v.total) || 0 }));
 
   return {
-    kpi: { revenueBilled, revenueCollected, outstanding: revenueBilled - revenueCollected, patients, buyers, convertedNewPatients, sales, avgTicket, atendimentos, cancelados, faltas },
+    kpi: { revenueBilled, revenueCollected, outstanding: revenueBilled - revenueCollected, patients, buyers, convertedNewPatients, sales, avgTicket, atendimentos, cancelados, faltas, patientsSeen, returningPatients },
     gauges,
     chart: buckets,
     topProcedures: topProcedures(vendas.map((v) => v.procedimentos), 6) as ProcCount[],
