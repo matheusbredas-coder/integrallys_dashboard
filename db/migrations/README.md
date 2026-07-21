@@ -21,6 +21,7 @@ Apply these in order in the Supabase SQL editor (Dashboard → SQL Editor), or v
 16. `016_bot_leads.sql` — Lead Qualifier Bot tables (`bot_leads`, `bot_lead_messages`, named with a `bot_` prefix to avoid colliding with a pre-existing unrelated `public.leads` table), `bot_leads_view`, grants, and public `bot-media` storage bucket.
 17. `017_bot_leads_sent_images.sql` — adds `bot_leads.sent_image_urls` (per-lead pitch-image dedup).
 18. `018_reactivation_campaigns.sql` — campaigns table for reactivation campaign storage and bot_leads reactivation columns (track, last_template_at). **Depends on 016 being applied with its current `bot_leads` naming** (016 and 017 are both still uncommitted/unapplied as of this entry).
+19. `019_bot_appointment_confirmations.sql` — `bot_appointment_confirmations` table (day-before WhatsApp confirmation audit/idempotency, bot-owned), `bot_leads` columns `pending_confirmation_agenda_id`/`origin`, and widens `agenda_attendance`'s source check to allow `'whatsapp'`.
 
 After applying 001/002, sanity-check:
 ```sql

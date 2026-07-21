@@ -21,9 +21,11 @@ function unwrap<T>(body: unknown, key: string): T[] {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Fetch with retry/backoff on 429 (rate limit). Honors Retry-After when present.
-async function fetchWithRetry(url: string, fetchImpl: typeof fetch, tries = 5): Promise<Response> {
+// `init` lets callers set a method other than GET (e.g. DELETE for cancelAgenda);
+// authHeaders() is always merged in so every call stays authenticated.
+async function fetchWithRetry(url: string, fetchImpl: typeof fetch, init: RequestInit = {}, tries = 5): Promise<Response> {
   for (let i = 0; ; i++) {
-    const res = await fetchImpl(url, { headers: authHeaders() });
+    const res = await fetchImpl(url, { ...init, headers: { ...authHeaders(), ...(init.headers ?? {}) } });
     if (res.status !== 429 || i >= tries) return res;
     const ra = Number(res.headers.get("retry-after"));
     await sleep(Number.isFinite(ra) && ra > 0 ? ra * 1000 : Math.min(8000, 500 * 2 ** i));
@@ -97,4 +99,27 @@ export async function fetchAllAgenda(startISO: string, fetchImpl: typeof fetch =
     for (const a of items) if (a.id) byId.set(a.id, a);
   }
   return [...byId.values()];
+}
+
+// Fetch a single day's agenda. Used by the appointment-confirmation cron, which only
+// ever needs "tomorrow" — a single day is well under the per-request date-filter cap,
+// so unlike fetchAllAgenda/fetchAllVendas this doesn't need monthlyWindows(). Tipo=0
+// returns both realized and upcoming appointments; the caller filters by `pendente`.
+export async function fetchAgendaForDay(dayISO: string, fetchImpl: typeof fetch = fetch): Promise<GestekAgenda[]> {
+  const items = await fetchPaged<GestekAgenda>(
+    "/agenda",
+    "agendamentos",
+    { DataInicio: `${dayISO}T00:00:00Z`, DataFim: `${dayISO}T23:59:59Z`, Tipo: "0" },
+    fetchImpl,
+  );
+  const byId = new Map<string, GestekAgenda>();
+  for (const a of items) if (a.id) byId.set(a.id, a);
+  return [...byId.values()];
+}
+
+// Cancel a booking. Confirmed to exist via the Gestek Swagger UI (DELETE /api/agenda/{id},
+// 200 OK) even though every other call in this client is read-only.
+export async function cancelAgenda(id: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  const res = await fetchWithRetry(`${BASE}/agenda/${id}`, fetchImpl, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Gestek DELETE /agenda/${id} returned ${res.status}`);
 }

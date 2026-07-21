@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fetchAllAgenda, fetchAllClientes, fetchAllVendas, monthlyWindows } from "./gestek-client";
+import { cancelAgenda, fetchAgendaForDay, fetchAllAgenda, fetchAllClientes, fetchAllVendas, monthlyWindows } from "./gestek-client";
 
 const page = (key: string, items: unknown[]) =>
   new Response(JSON.stringify([{ [key]: items }]), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -89,5 +89,42 @@ describe("fetchAllAgenda", () => {
     expect(String(url)).toContain("Page=0"); // 0-indexed
     expect(String(url)).toContain("DataInicio=2025-01-01T00%3A00%3A00Z");
     expect(String(url)).toContain("DataFim=2025-01-31T23%3A59%3A59Z");
+  });
+});
+
+describe("fetchAgendaForDay", () => {
+  it("fetches a single day window (no monthly paging) with Tipo=0, dedupes by id", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => page("agendamentos", [{ id: "a1", pendente: true }]));
+    const out = await fetchAgendaForDay("2026-07-20", fetchMock as unknown as typeof fetch);
+    expect(out).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // a single day is one window, one page
+    const [url] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/api/agenda");
+    expect(String(url)).toContain("Tipo=0");
+    expect(String(url)).toContain("Page=0");
+    expect(String(url)).toContain("DataInicio=2026-07-20T00%3A00%3A00Z");
+    expect(String(url)).toContain("DataFim=2026-07-20T23%3A59%3A59Z");
+  });
+
+  it("throws on non-2xx", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("nope", { status: 500 }));
+    await expect(fetchAgendaForDay("2026-07-20", fetchMock as unknown as typeof fetch)).rejects.toThrow();
+  });
+});
+
+describe("cancelAgenda", () => {
+  it("sends DELETE to /agenda/{id} with bearer auth", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    await cancelAgenda("a1", fetchMock as unknown as typeof fetch);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://apipublica.gestek.com.br/api/agenda/a1");
+    expect((init as RequestInit).method).toBe("DELETE");
+    expect((init as RequestInit).headers).toMatchObject({ Authorization: "Bearer tok" });
+  });
+
+  it("throws on non-2xx", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("nope", { status: 500 }));
+    await expect(cancelAgenda("a1", fetchMock as unknown as typeof fetch)).rejects.toThrow();
   });
 });
