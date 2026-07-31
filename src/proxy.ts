@@ -35,5 +35,11 @@ export const config = {
   // api/cron/* is excluded: Vercel Cron calls carry no session cookie and authenticate
   // with CRON_SECRET inside the route handler — a redirect to /login here silently
   // kills the scheduled sync.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/cron/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // r/* is excluded: the public WhatsApp click-to-chat redirect must work with no session
+  // (shared in bios, ads, QR codes) — a redirect to /login would break every tracked link.
+  // api/leads/* is excluded for the same reason as api/cron/*: the Google Sheet's Apps
+  // Script posts new Meta form leads with no session cookie and authenticates with
+  // FORM_LEADS_SECRET inside the route handler. A redirect to /login here would make every
+  // lead silently vanish (the script would see a 307, never mark the row, and retry forever).
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/cron/|api/leads/|r/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };
