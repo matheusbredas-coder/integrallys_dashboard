@@ -155,24 +155,33 @@ function filteredSales(source: OverviewSource, range: DateRange): VendaRow[] {
   return source.vendas.filter((v) => isWithin(localDateKey(new Date(v.sold_at)), range.start, range.end));
 }
 
-// Repeat-visit rate: of patients with a completed sale on or before `asOf`, what share have
-// sales on 2+ distinct calendar days (same-day multi-procedure sales count as one visit).
-// Deliberately uses full history bounded by `asOf`, not the period's own range, so the rate
-// reads as "as of this period end" rather than being scoped to a single, mostly-meaningless window.
-export function computeReturnRate(vendas: VendaRow[], asOf: Date) {
+// Repeat-visit rate scoped to this period's cohort: of patients with a qualifying (paid, total>0)
+// visit inside the selected range, how many have another qualifying visit on a later day. total=0
+// rows are package-included follow-ups (e.g. "REVISÃO BOTOX/PREENCHIMENTO") — real appointments,
+// but not a new purchase, so they neither seed the cohort nor count as a return.
+export function computeReturnRate(vendas: VendaRow[], range: DateRange) {
   const daysByPatient = new Map<string, Set<number>>();
   for (const v of vendas) {
     const id = v.cliente_supabase_id;
-    if (!id) continue;
-    const day = localDateKey(new Date(v.sold_at));
-    if (day.getTime() > asOf.getTime()) continue;
+    if (!id || !((Number(v.total) || 0) > 0)) continue;
+    const day = localDateKey(new Date(v.sold_at)).getTime();
     let days = daysByPatient.get(id);
     if (!days) daysByPatient.set(id, (days = new Set()));
-    days.add(day.getTime());
+    days.add(day);
   }
+  const start = range.start.getTime();
+  const end = range.end.getTime();
+  let patientsSeen = 0;
   let returningPatients = 0;
-  for (const days of daysByPatient.values()) if (days.size >= 2) returningPatients++;
-  return { patientsSeen: daysByPatient.size, returningPatients };
+  for (const daySet of daysByPatient.values()) {
+    const days = [...daySet];
+    const inRange = days.filter((d) => d >= start && d <= end);
+    if (inRange.length === 0) continue;
+    patientsSeen++;
+    const anchor = Math.min(...inRange);
+    if (days.some((d) => d > anchor)) returningPatients++;
+  }
+  return { patientsSeen, returningPatients };
 }
 
 function filteredClients(source: OverviewSource, range: DateRange): ClienteRow[] {
@@ -246,7 +255,7 @@ export function buildOverviewSlice(source: OverviewSource, range: DateRange, tim
   // sale in this period. Drives "Taxa de conversão" — a new-patient funnel, not sales/atendimentos.
   const convertedNewPatients = clientes.filter((c) => buyerIds.has(c.id)).length;
   const avgTicket = sales ? revenueBilled / sales : 0;
-  const { patientsSeen, returningPatients } = computeReturnRate(source.vendas, range.end);
+  const { patientsSeen, returningPatients } = computeReturnRate(source.vendas, range);
   const revenueGoal = goalForTimeframe(source.goals.monthly_revenue_goal, timeframe, range);
   const clamp = (n: number) => Math.max(0, Math.min(1, n));
 

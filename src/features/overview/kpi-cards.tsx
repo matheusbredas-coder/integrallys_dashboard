@@ -31,7 +31,7 @@ export function KpiCards({ kpi }: { kpi: Kpi }) {
     { label: "Novos pacientes", value: kpi.patients, kind: "int" as const },
     { label: "Vendas", value: kpi.sales, kind: "int" as const },
     { label: "Taxa de conversão", value: kpi.patients ? (kpi.convertedNewPatients / kpi.patients) * 100 : 0, kind: "percent" as const },
-    { label: "Taxa de retorno", sub: "≥2 visitas · acumulado até o período", value: kpi.patientsSeen ? (kpi.returningPatients / kpi.patientsSeen) * 100 : 0, kind: "percent" as const },
+    { label: "Taxa de retorno", sub: "voltou e comprou depois da visita no período", value: kpi.patientsSeen ? (kpi.returningPatients / kpi.patientsSeen) * 100 : 0, kind: "percent" as const },
   ];
   return (
     <div className="grid-kpi">

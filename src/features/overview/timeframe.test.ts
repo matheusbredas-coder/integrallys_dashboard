@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildOverviewSlice, computeReturnRate, rangeForPreset } from "./timeframe";
-import type { OverviewSource, Timeframe, VendaRow } from "./types";
+import type { DateRange, OverviewSource, Timeframe, VendaRow } from "./types";
 
 const source: OverviewSource = {
   vendas: [
@@ -69,14 +69,23 @@ describe("buildOverviewSlice", () => {
     expect(week.recentSales.map((r) => r.patient)).toEqual(["ANA", "BIA"]);
     expect(year.recentSales.map((r) => r.patient)).toEqual(["ANA", "BIA", "BIA", "CARLA"]);
 
-    // Return rate is computed over full history as-of range.end, not scoped to the preset's
-    // start — and every preset here shares the same end (today), so it's constant across them.
-    // BIA (patient "2") bought on two distinct days (06-02, 06-15) → returning; ANA and CARLA
-    // each have a single sale day.
-    for (const s of [today, week, month, year]) {
-      expect(s.kpi.patientsSeen).toBe(3);
-      expect(s.kpi.returningPatients).toBe(1);
-    }
+    // Return rate is now scoped to each preset's own cohort (patients with a qualifying visit
+    // inside that range), so it varies by preset instead of being constant.
+    // - today (06-16..06-16): only ANA is in range; no later visit → not returning.
+    // - week (06-15..06-16): ANA + BIA (06-15) in range; BIA's other visit (06-02) is BEFORE
+    //   her in-range anchor (06-15), not after, so it doesn't count as "coming back".
+    // - month (06-01..06-16): BIA's both visits (06-02, 06-15) fall inside the range, so her
+    //   anchor is 06-02 and 06-15 is a later qualifying day → returning.
+    // - year (01-01..06-16): same as month, plus CARLA (05-20) enters the cohort with no
+    //   later visit of her own → not returning.
+    expect(today.kpi.patientsSeen).toBe(1);
+    expect(today.kpi.returningPatients).toBe(0);
+    expect(week.kpi.patientsSeen).toBe(2);
+    expect(week.kpi.returningPatients).toBe(0);
+    expect(month.kpi.patientsSeen).toBe(2);
+    expect(month.kpi.returningPatients).toBe(1);
+    expect(year.kpi.patientsSeen).toBe(3);
+    expect(year.kpi.returningPatients).toBe(1);
   });
 
   it("discounts = sum of valor_desconto over the period, ring = share of gross", () => {
@@ -121,37 +130,35 @@ describe("buildOverviewSlice — hourly granularity buckets by registration time
 describe("computeReturnRate", () => {
   // Noon UTC keeps every fixture date well clear of the America/Sao_Paulo (UTC-3) day-boundary
   // shift localDateKey applies, so "same day" / "different day" here reads exactly as intended.
-  const sale = (id: string | null, soldAt: string): VendaRow =>
-    ({ sold_at: `${soldAt}T12:00:00.000Z`, cliente_supabase_id: id, cliente_nome: null, total: 0, valor_pago: 0, valor_desconto: 0, procedimentos: null });
-  const asOf = new Date("2026-03-01T12:00:00.000Z");
+  // total defaults to a qualifying (paid) sale; pass 0 to simulate a package-included follow-up.
+  const sale = (id: string | null, soldAt: string, total = 100): VendaRow =>
+    ({ sold_at: `${soldAt}T12:00:00.000Z`, cliente_supabase_id: id, cliente_nome: null, total, valor_pago: total, valor_desconto: 0, procedimentos: null });
+  const range = (start: string, end: string): DateRange =>
+    ({ start: new Date(`${start}T00:00:00.000Z`), end: new Date(`${end}T23:59:59.999Z`) });
+  // Wide enough to contain every fixture date used below without constraining the cohort.
+  const allTime = range("2020-01-01", "2026-12-31");
 
   it("counts a patient with sales on two distinct days as returning", () => {
-    const { patientsSeen, returningPatients } = computeReturnRate([sale("p1", "2026-01-05"), sale("p1", "2026-02-10")], asOf);
+    const { patientsSeen, returningPatients } = computeReturnRate([sale("p1", "2026-01-05"), sale("p1", "2026-02-10")], allTime);
     expect(patientsSeen).toBe(1);
     expect(returningPatients).toBe(1);
   });
 
   it("does not count same-day multi-procedure sales as a return", () => {
-    const { patientsSeen, returningPatients } = computeReturnRate([sale("p1", "2026-01-05"), sale("p1", "2026-01-05")], asOf);
+    const { patientsSeen, returningPatients } = computeReturnRate([sale("p1", "2026-01-05"), sale("p1", "2026-01-05")], allTime);
     expect(patientsSeen).toBe(1);
     expect(returningPatients).toBe(0);
   });
 
   it("counts a single-visit patient as seen but not returning", () => {
-    const { patientsSeen, returningPatients } = computeReturnRate([sale("p1", "2026-01-05")], asOf);
+    const { patientsSeen, returningPatients } = computeReturnRate([sale("p1", "2026-01-05")], allTime);
     expect(patientsSeen).toBe(1);
     expect(returningPatients).toBe(0);
   });
 
   it("ignores sales with no cliente_supabase_id", () => {
-    const { patientsSeen, returningPatients } = computeReturnRate([sale(null, "2026-01-05"), sale(null, "2026-02-10")], asOf);
+    const { patientsSeen, returningPatients } = computeReturnRate([sale(null, "2026-01-05"), sale(null, "2026-02-10")], allTime);
     expect(patientsSeen).toBe(0);
-    expect(returningPatients).toBe(0);
-  });
-
-  it("excludes sales after the asOf date", () => {
-    const { patientsSeen, returningPatients } = computeReturnRate([sale("p1", "2026-01-05"), sale("p1", "2026-04-10")], asOf);
-    expect(patientsSeen).toBe(1);
     expect(returningPatients).toBe(0);
   });
 
@@ -161,8 +168,52 @@ describe("computeReturnRate", () => {
       sale("p2", "2026-01-06"), // one-time
       sale("p3", "2026-01-07"), sale("p3", "2026-01-08"), sale("p3", "2026-01-09"), // returning
     ];
-    const { patientsSeen, returningPatients } = computeReturnRate(vendas, asOf);
+    const { patientsSeen, returningPatients } = computeReturnRate(vendas, allTime);
     expect(patientsSeen).toBe(3);
     expect(returningPatients).toBe(2);
+  });
+
+  it("excludes a patient whose only visit is a package-included follow-up (total=0)", () => {
+    const { patientsSeen, returningPatients } = computeReturnRate([sale("p1", "2026-01-05", 0)], allTime);
+    expect(patientsSeen).toBe(0);
+    expect(returningPatients).toBe(0);
+  });
+
+  it("does not count a free follow-up after a paid visit as returning", () => {
+    const vendas = [sale("p1", "2026-01-05", 100), sale("p1", "2026-01-20", 0)];
+    const { patientsSeen, returningPatients } = computeReturnRate(vendas, allTime);
+    expect(patientsSeen).toBe(1);
+    expect(returningPatients).toBe(0);
+  });
+
+  it("still counts a return when the paying visit is bundled with a free item that same day", () => {
+    // One row per sale in this codebase, so a bundled free+paid sale is a single row with total>0.
+    const vendas = [sale("p1", "2026-01-05", 100), sale("p1", "2026-02-10", 150)];
+    const { patientsSeen, returningPatients } = computeReturnRate(vendas, allTime);
+    expect(patientsSeen).toBe(1);
+    expect(returningPatients).toBe(1);
+  });
+
+  it("only counts patients with a qualifying visit inside the given range", () => {
+    const vendas = [sale("p1", "2026-01-05"), sale("p2", "2026-06-05")];
+    const { patientsSeen, returningPatients } = computeReturnRate(vendas, range("2026-01-01", "2026-01-31"));
+    expect(patientsSeen).toBe(1); // only p1's January visit is in range; p2 is excluded entirely
+    expect(returningPatients).toBe(0);
+  });
+
+  it("does not count a visit before the range as evidence of returning", () => {
+    // p1's only in-range visit is 02-15; the 01-05 visit predates the range and is what got them
+    // into the clinic, not a sign they "came back" during this period.
+    const vendas = [sale("p1", "2026-01-05"), sale("p1", "2026-02-15")];
+    const { patientsSeen, returningPatients } = computeReturnRate(vendas, range("2026-02-01", "2026-02-28"));
+    expect(patientsSeen).toBe(1);
+    expect(returningPatients).toBe(0);
+  });
+
+  it("counts two qualifying visits that both fall inside a wide range as returning", () => {
+    const vendas = [sale("p1", "2026-01-05"), sale("p1", "2026-02-15")];
+    const { patientsSeen, returningPatients } = computeReturnRate(vendas, range("2026-01-01", "2026-03-31"));
+    expect(patientsSeen).toBe(1);
+    expect(returningPatients).toBe(1);
   });
 });
