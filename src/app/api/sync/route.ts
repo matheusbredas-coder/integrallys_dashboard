@@ -30,6 +30,8 @@ export async function POST(req: Request) {
     // on freshly synced data rather than the previous cached copy.
     revalidateTag("overview", { expire: 0 });
     revalidateTag("patients", { expire: 0 });
+    // Refresh WhatsApp click counts on the same beat as the rest of the dashboard.
+    revalidateTag("wa-links", { expire: 0 });
   }
 
   const status = result.ok ? 200 : result.code === "guard_tripped" ? 409 : 502;
