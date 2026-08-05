@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { mapSheetFields, normalizeHeader, parseSubmittedAt } from "./mapping";
+import {
+  coerceIngestFields,
+  flattenFieldData,
+  mapSheetFields,
+  normalizeHeader,
+  parseSubmittedAt,
+} from "./mapping";
 
 // The column set Meta's Lead Ads -> Sheets integration produces for a standard form.
 const metaRow = {
@@ -134,5 +140,168 @@ describe("mapSheetFields", () => {
     const m = mapSheetFields({ "": "orphan", Nome: "Primeira", nome: "Segunda" });
     expect(m.name).toBe("Primeira");
     expect(m.raw[""]).toBeUndefined();
+  });
+});
+
+// What Ottokit's Facebook Lead Ads "New Lead" trigger POSTs: ad metadata flat at the top
+// level, the lead's own answers nested in `field_data`. `form_name` is a literal typed
+// into the Ottokit request body — the trigger only exposes `form_id`.
+const ottokitBody = {
+  id: "l_10223344",
+  created_time: "2026-07-31T14:23:05+0000",
+  campaign_id: "120000",
+  campaign_name: "Harmonização - Julho",
+  adset_id: "230000",
+  adset_name: "Curitiba 25-45",
+  ad_id: "340000",
+  ad_name: "Vídeo depoimento",
+  form_id: "998877",
+  form_name: "Avaliação gratuita",
+  field_data: [
+    { name: "full_name", values: ["Ana Souza"] },
+    { name: "phone_number", values: ["+55 (41) 99999-8888"] },
+    { name: "email", values: ["Ana@Example.COM"] },
+  ],
+};
+
+describe("flattenFieldData", () => {
+  it("flattens Meta's { name, values } entries", () => {
+    expect(flattenFieldData(ottokitBody.field_data)).toEqual({
+      full_name: "Ana Souza",
+      phone_number: "+55 (41) 99999-8888",
+      email: "Ana@Example.COM",
+    });
+  });
+
+  it("flattens the same array handed over as a JSON string", () => {
+    expect(flattenFieldData(JSON.stringify(ottokitBody.field_data))).toEqual(
+      flattenFieldData(ottokitBody.field_data)
+    );
+  });
+
+  it("accepts the collapsed { name, value } shape some connectors emit", () => {
+    expect(flattenFieldData([{ name: "full_name", value: "Ana Souza" }])).toEqual({
+      full_name: "Ana Souza",
+    });
+  });
+
+  it("joins a multi-answer checkbox question", () => {
+    const flat = flattenFieldData([
+      { name: "Quais procedimentos?", values: ["Botox", "Preenchimento", ""] },
+    ]);
+    expect(flat["Quais procedimentos?"]).toBe("Botox, Preenchimento");
+  });
+
+  it("keeps the first entry when a question name repeats", () => {
+    const flat = flattenFieldData([
+      { name: "email", values: ["primeiro@example.com"] },
+      { name: "email", values: ["segundo@example.com"] },
+    ]);
+    expect(flat.email).toBe("primeiro@example.com");
+  });
+
+  it("returns {} for anything unusable instead of throwing", () => {
+    for (const junk of [null, undefined, 42, "not json", "", "{}", {}, [1, 2], [null]]) {
+      expect(flattenFieldData(junk)).toEqual({});
+    }
+  });
+
+  it("skips entries with no usable name", () => {
+    expect(flattenFieldData([{ name: "   ", values: ["x"] }, { values: ["y"] }])).toEqual({});
+  });
+});
+
+describe("coerceIngestFields", () => {
+  it("returns an explicit `fields` map verbatim", () => {
+    const fields = { full_name: "João Lima", Telefone: "41988887777" };
+    expect(coerceIngestFields({ row: 7, submitted_at: "2026-07-31", fields })).toBe(fields);
+  });
+
+  it("merges field_data over the top-level ad metadata", () => {
+    const fields = coerceIngestFields(ottokitBody);
+    expect(fields.full_name).toBe("Ana Souza");
+    expect(fields.campaign_name).toBe("Harmonização - Julho");
+    expect(fields.ad_name).toBe("Vídeo depoimento");
+    expect(fields.field_data).toBeUndefined(); // consumed, not left as a raw column
+  });
+
+  it("lets a form question outrank the ad metadata it collides with", () => {
+    const fields = coerceIngestFields({
+      campaign_name: "Nome da campanha",
+      field_data: [{ name: "campaign_name", values: ["Resposta do lead"] }],
+    });
+    expect(fields.campaign_name).toBe("Resposta do lead");
+  });
+
+  it("never lets the body-carried secret reach the fields (and so `raw`)", () => {
+    const fields = coerceIngestFields({ secret: "s3cr3t", full_name: "Ana" });
+    expect(fields.secret).toBeUndefined();
+    expect(mapSheetFields(fields).raw.secret).toBeUndefined();
+  });
+
+  it("drops the envelope keys and any null values", () => {
+    const fields = coerceIngestFields({
+      row: 7,
+      submitted_at: "2026-07-31T14:23:05+0000",
+      adset_name: null,
+      full_name: "Ana",
+    });
+    expect(fields).toEqual({ full_name: "Ana" });
+  });
+
+  it("stringifies an unexpected nested value so it stays readable in raw", () => {
+    const fields = coerceIngestFields({ custom_disclaimer: { checked: true } });
+    expect(fields.custom_disclaimer).toBe('{"checked":true}');
+  });
+
+  it("returns {} for a non-object body", () => {
+    expect(coerceIngestFields(null)).toEqual({});
+    expect(coerceIngestFields("oi")).toEqual({});
+    expect(coerceIngestFields([1, 2])).toEqual({});
+  });
+});
+
+describe("coerceIngestFields + mapSheetFields (the ingest route's path)", () => {
+  it("maps a full Ottokit payload onto form_leads columns", () => {
+    const m = mapSheetFields(coerceIngestFields(ottokitBody));
+    expect(m.external_id).toBe("l_10223344");
+    expect(m.name).toBe("Ana Souza");
+    expect(m.phone).toBe("5541999998888");
+    expect(m.email).toBe("ana@example.com");
+    expect(m.campaign).toBe("Harmonização - Julho");
+    expect(m.form_name).toBe("Avaliação gratuita");
+    expect(m.submitted_at).toBe("2026-07-31T14:23:05.000Z");
+  });
+
+  it("keeps the attribution metadata in raw for later analysis", () => {
+    const m = mapSheetFields(coerceIngestFields(ottokitBody));
+    expect(m.raw.ad_name).toBe("Vídeo depoimento");
+    expect(m.raw.adset_name).toBe("Curitiba 25-45");
+    expect(m.raw.form_id).toBe("998877");
+  });
+
+  it("keeps an unmapped custom question in raw", () => {
+    const m = mapSheetFields(
+      coerceIngestFields({
+        ...ottokitBody,
+        field_data: [
+          ...ottokitBody.field_data,
+          { name: "Qual seu principal incômodo?", values: ["rugas na testa"] },
+        ],
+      })
+    );
+    expect(m.raw["Qual seu principal incômodo?"]).toBe("rugas na testa");
+  });
+
+  it("still records the lead when field_data is malformed", () => {
+    const m = mapSheetFields(coerceIngestFields({ ...ottokitBody, field_data: "not json" }));
+    expect(m.name).toBeNull();
+    expect(m.external_id).toBe("l_10223344"); // top-level metadata survives
+    expect(m.campaign).toBe("Harmonização - Julho");
+  });
+
+  it("still maps the retired Sheets shape unchanged", () => {
+    const m = mapSheetFields(coerceIngestFields({ row: 12, fields: metaRow }));
+    expect(m).toEqual(mapSheetFields(metaRow));
   });
 });

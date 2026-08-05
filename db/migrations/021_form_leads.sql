@@ -1,7 +1,10 @@
--- Meta Ads Instant Form leads. Meta's Lead Ads integration writes each submission into a
--- Google Sheet; a Sheet-bound Apps Script polls that sheet once a minute and POSTs new
--- rows to /api/leads/form, which inserts them here and fires a Slack notification.
--- See scripts/apps-script/README.md for the Sheet side.
+-- Meta Ads Instant Form leads. An Ottokit workflow subscribes to the Facebook Lead Ads
+-- "New Lead" trigger and POSTs each lead to /api/leads/form, which inserts it here.
+-- See docs/ottokit-form-leads.md for the Ottokit side.
+--
+-- (Comment updated after this migration was applied; the DDL below is unchanged. The
+-- original ingest was a Google Sheet polled by a bound Apps Script, retired in favour of
+-- Ottokit — which is why `sheet_row` exists and is null on every lead since.)
 --
 -- Self-contained: no dependency on the still-pending campaigns / bot_leads rename
 -- migrations (016-018). Same stance as 020_wa_links.sql.
@@ -15,7 +18,7 @@ create table if not exists public.form_leads (
   id            text primary key default gen_random_uuid()::text,
   source        text not null default 'meta_instant_form',
   external_id   text,          -- Meta lead id when the sheet carries one; null otherwise
-  sheet_row     integer,       -- origin row number, for tracing a lead back to the Sheet
+  sheet_row     integer,       -- legacy: origin row of the retired Sheet; null for Ottokit
   campaign      text,
   form_name     text,
   name          text,
@@ -38,8 +41,8 @@ create table if not exists public.form_leads (
 -- "inserted" from "already had it" in a single statement (PostgREST can't emit the
 -- `WHERE` clause that inferring a partial index would require).
 --
--- Rows with a null external_id get no DB-level dedupe; for those it rests on the Apps
--- Script `Sincronizado` marker, only written after a 2xx from the ingest route.
+-- Rows with a null external_id get no DB-level dedupe. In practice Ottokit always sends
+-- Meta's lead id, so that case only arises from a hand-rolled POST.
 create unique index if not exists form_leads_external_id_key
   on public.form_leads (external_id);
 

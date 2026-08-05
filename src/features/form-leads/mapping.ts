@@ -1,9 +1,14 @@
-// Maps a Google Sheet row (header -> cell) onto form_leads columns.
+// Maps a Meta Instant Form submission (label -> answer) onto form_leads columns.
 //
-// We can't hard-code the sheet's headers: Meta's Lead Ads -> Sheets integration names
-// columns after the form's questions, which differ per form and per language. So each
-// target column has an alias list, matched against a normalized header, and *every*
-// original column is kept in `raw` — a question we failed to map is still recoverable.
+// We can't hard-code the labels: Meta names each field after the form's own question,
+// which differs per form and per language. So each target column has an alias list,
+// matched against a normalized label, and *every* original field is kept in `raw` — a
+// question we failed to map is still recoverable.
+//
+// Two callers, two payload shapes, both funnelled through `coerceIngestFields`:
+//   - Ottokit's Facebook Lead Ads trigger — flat ad metadata at the top level, with the
+//     lead's actual answers nested in `field_data`.
+//   - (historical) a Google Sheet row as a flat header -> cell map under `fields`.
 //
 // Pure (no I/O) so it stays trivially unit-testable. See mapping.test.ts.
 
@@ -106,6 +111,94 @@ function pick(byNormalized: Map<string, string>, aliases: string[]): string | nu
     }
   }
   return null;
+}
+
+/** One `field_data` entry: Meta's Graph shape, or the collapsed form some connectors emit. */
+type FieldDatum = { name?: unknown; values?: unknown; value?: unknown };
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Flatten Meta's `field_data` — `[{ name, values: [...] }, ...]` — into the flat
+ * label -> answer map `mapSheetFields` consumes.
+ *
+ * Tolerant on purpose. Ottokit is the caller and connectors are inconsistent: some pass
+ * the array through, some collapse `values` to a single `value`, and some hand the whole
+ * thing over as a JSON *string*. Anything unrecognizable yields `{}` rather than throwing,
+ * because a malformed field list must not cost us the lead — the ad metadata at the top
+ * level still maps, and the raw body is still recorded.
+ */
+export function flattenFieldData(value: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+
+  let list: unknown = value;
+  if (typeof list === "string") {
+    const text = list.trim();
+    if (text === "") return out;
+    try {
+      list = JSON.parse(text);
+    } catch {
+      return out;
+    }
+  }
+
+  if (!Array.isArray(list)) return out;
+
+  for (const entry of list) {
+    if (!isPlainObject(entry)) continue;
+    const { name, values, value: single } = entry as FieldDatum;
+    const label = String(name ?? "").trim();
+    if (label === "") continue;
+
+    // Checkbox questions carry several answers; join them so one cell holds all of them.
+    const text = Array.isArray(values)
+      ? values
+          .map((v) => (v === null || v === undefined ? "" : String(v).trim()))
+          .filter((s) => s !== "")
+          .join(", ")
+      : single === null || single === undefined
+        ? ""
+        : String(single);
+
+    // First entry wins on a repeated question name, matching mapSheetFields' stance on
+    // colliding headers.
+    if (!(label in out)) out[label] = text;
+  }
+
+  return out;
+}
+
+// Keys that describe the envelope rather than the lead, so they must not land in `raw`.
+// `secret` is in here for a stronger reason than tidiness: the ingest route accepts the
+// shared secret in the body (see its `isAuthorized`), and `raw` is persisted verbatim —
+// without this the credential would be written into the database with every lead.
+const RESERVED_BODY_KEYS = new Set(["row", "submitted_at", "fields", "field_data", "secret"]);
+
+/**
+ * Pick the field map out of an ingest body, whichever shape it arrived in.
+ *
+ * An explicit `fields` object is honoured verbatim — that's the original nested contract.
+ * Otherwise the body is treated as Ottokit's flat Facebook Lead Ads payload: top-level ad
+ * metadata (`campaign_name`, `ad_name`, `form_id`, ...) plus `field_data`, whose entries
+ * are merged *over* the metadata. The lead's own answers outrank the ad they arrived from,
+ * so a form question named `campaign_name` can't be shadowed by the campaign it ran under.
+ */
+export function coerceIngestFields(body: unknown): Record<string, unknown> {
+  if (!isPlainObject(body)) return {};
+  if (isPlainObject(body.fields)) return body.fields;
+
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body)) {
+    if (RESERVED_BODY_KEYS.has(key)) continue;
+    if (value === null || value === undefined) continue;
+    // Keep an unexpected nested structure legible in `raw` instead of "[object Object]".
+    out[key] = typeof value === "object" ? JSON.stringify(value) : value;
+  }
+
+  Object.assign(out, flattenFieldData(body.field_data));
+  return out;
 }
 
 export function mapSheetFields(fields: Record<string, unknown>): MappedLead {
