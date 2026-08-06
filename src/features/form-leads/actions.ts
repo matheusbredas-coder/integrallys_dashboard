@@ -166,12 +166,20 @@ export async function commitFormLeadsCsv(
   }
 
   // Same best-effort stance as updateFormLeadStage: the rows are already committed, and a
-  // Meta problem must not turn a successful import into an error the user sees.
-  for (const id of insertedIds) {
-    const capi = await enqueueStageEvent(id, "novo");
-    if (capi.queued && capi.reason) {
-      console.warn(`[form-leads] csv import lead ${id}: CAPI event queued (${capi.reason})`);
-    }
+  // Meta problem must not turn a successful import into an error the user sees. Reported in
+  // concurrent chunks (not one row at a time) so a large import doesn't risk running past the
+  // server action's duration limit.
+  const CAPI_CHUNK_SIZE = 10;
+  for (let i = 0; i < insertedIds.length; i += CAPI_CHUNK_SIZE) {
+    const chunk = insertedIds.slice(i, i + CAPI_CHUNK_SIZE);
+    await Promise.all(
+      chunk.map(async (id) => {
+        const capi = await enqueueStageEvent(id, "novo");
+        if (capi.queued && capi.reason) {
+          console.warn(`[form-leads] csv import lead ${id}: CAPI event queued (${capi.reason})`);
+        }
+      })
+    );
   }
 
   if (insertedIds.length > 0) revalidateTag("form-leads", { expire: 0 });

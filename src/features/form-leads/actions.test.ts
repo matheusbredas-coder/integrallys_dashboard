@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const getUser = vi.fn(async () => ({ data: { user: { id: "u1" } } }));
 const selectIn = vi.fn(async () => ({ data: [], error: null }));
 const upsertSelect = vi.fn(async () => ({ data: [], error: null }));
+const upsert = vi.fn(() => ({ select: upsertSelect }));
 const enqueueStageEvent = vi.fn(async () => ({ queued: true }));
 const revalidateTag = vi.fn();
 
@@ -11,7 +12,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServiceClient: () => ({
     from: () => ({
       select: () => ({ in: selectIn }),
-      upsert: () => ({ select: upsertSelect }),
+      upsert,
       update: () => ({ eq: async () => ({ error: null }) }),
     }),
   }),
@@ -41,6 +42,7 @@ beforeEach(() => {
   getUser.mockResolvedValue({ data: { user: { id: "u1" } } });
   selectIn.mockResolvedValue({ data: [{ external_id: "l:3" }], error: null });
   upsertSelect.mockClear();
+  upsert.mockClear();
   enqueueStageEvent.mockClear();
   revalidateTag.mockClear();
 });
@@ -75,6 +77,14 @@ describe("commitFormLeadsCsv", () => {
   it("inserts only the new rows and reports each one to Meta", async () => {
     const res = await commitFormLeadsCsv(CSV);
     expect(res).toEqual({ ok: true, inserted: 1, duplicate: 2, invalid: 1 });
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    const [rows, options] = upsert.mock.calls[0];
+    expect(rows).toHaveLength(1);
+    expect(rows.map((r: { external_id: string }) => r.external_id)).toEqual(["l:1"]);
+    for (const row of rows) expect(row).not.toHaveProperty("stage");
+    expect(options).toEqual({ onConflict: "external_id", ignoreDuplicates: true });
+
     expect(enqueueStageEvent).toHaveBeenCalledTimes(1);
     expect(enqueueStageEvent).toHaveBeenCalledWith("row-1", "novo");
     expect(revalidateTag).toHaveBeenCalledWith("form-leads", { expire: 0 });
@@ -84,6 +94,7 @@ describe("commitFormLeadsCsv", () => {
     selectIn.mockResolvedValue({ data: [{ external_id: "l:1" }, { external_id: "l:3" }], error: null });
     const res = await commitFormLeadsCsv(CSV);
     expect(res).toEqual({ ok: true, inserted: 0, duplicate: 3, invalid: 1 });
+    expect(upsert).not.toHaveBeenCalled();
     expect(upsertSelect).not.toHaveBeenCalled();
     expect(enqueueStageEvent).not.toHaveBeenCalled();
     expect(revalidateTag).not.toHaveBeenCalled();
