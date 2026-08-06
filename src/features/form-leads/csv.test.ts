@@ -42,3 +42,52 @@ describe("parseCsv", () => {
     expect(parseCsv("id,nome\n")).toEqual([]);
   });
 });
+
+import { parseCsvLeads, isInvalidLead, classifyCsvLeads } from "./csv";
+
+describe("parseCsvLeads", () => {
+  it("maps each row through mapSheetFields and numbers rows starting at 2 (header is row 1)", () => {
+    const text = "id,nome_completo,email,telefone\nl:1,Ana,ana@x.com,+5511999999999\n";
+    expect(parseCsvLeads(text)).toEqual([
+      {
+        rowNumber: 2,
+        lead: {
+          external_id: "l:1",
+          name: "Ana",
+          phone: "5511999999999",
+          email: "ana@x.com",
+          campaign: null,
+          form_name: null,
+          submitted_at: null,
+          raw: { id: "l:1", nome_completo: "Ana", email: "ana@x.com", telefone: "+5511999999999" },
+        },
+      },
+    ]);
+  });
+});
+
+describe("isInvalidLead", () => {
+  const base = { external_id: null, campaign: null, form_name: null, submitted_at: null, raw: {} };
+
+  it("is true only when name, phone and email are all null", () => {
+    expect(isInvalidLead({ ...base, name: null, phone: null, email: null })).toBe(true);
+    expect(isInvalidLead({ ...base, name: "Ana", phone: null, email: null })).toBe(false);
+  });
+});
+
+describe("classifyCsvLeads", () => {
+  it("marks the first occurrence of an id new and later ones in the same file duplicate", () => {
+    const rows = parseCsvLeads("id,nome_completo\nl:1,Ana\nl:1,Ana Repetida\n");
+    expect(classifyCsvLeads(rows, new Set()).map((r) => r.status)).toEqual(["new", "duplicate"]);
+  });
+
+  it("marks an id already in the database as duplicate", () => {
+    const rows = parseCsvLeads("id,nome_completo\nl:1,Ana\n");
+    expect(classifyCsvLeads(rows, new Set(["l:1"])).map((r) => r.status)).toEqual(["duplicate"]);
+  });
+
+  it("marks a row with no identity fields invalid, even with other columns present", () => {
+    const rows = parseCsvLeads("id,nome_completo,campanha\nl:1,,Campanha X\n");
+    expect(classifyCsvLeads(rows, new Set()).map((r) => r.status)).toEqual(["invalid"]);
+  });
+});
