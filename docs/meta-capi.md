@@ -96,8 +96,13 @@ Set `META_CAPI_ENABLED=true` in Vercel.
 While it is off, stage changes are still **recorded** in `capi_events` as `pending`. The cron
 delivers them the moment you switch it on, so nothing that happened in between is lost.
 
-Meta expects the integration to upload at least once a day, which the 15-minute cron covers
-comfortably — but it also means a long stretch of `pending` rows is a real alarm, not noise.
+Meta expects the integration to upload at least once a day, which the daily cron meets exactly
+— but it also means a long stretch of `pending` rows is a real alarm, not noise.
+
+The cron is **daily, not every 15 minutes**: the Vercel account is on the Hobby plan, which
+rejects a more frequent cron expression by failing the deploy outright. It costs little here,
+because the send already happens inline via `after()` the moment a stage changes; the cron only
+picks up what failed, and a failed event has 7 days before Meta refuses it.
 
 ## How it works
 
@@ -113,7 +118,7 @@ updateFormLeadStage()  → enqueueStageEvent(id, <new stage>) every later stage
        └─ after(() => send)      ← runs AFTER the response is sent
              └─ sendCapiEvent()  features/capi/client.ts  → graph.facebook.com
 
-/api/cron/capi  (every 15 min) → drainPendingCapiEvents() → retries whatever is still 'pending'
+/api/cron/capi  (daily, 09:00 UTC) → drainPendingCapiEvents() → retries whatever is still 'pending'
 ```
 
 Two deliberate properties:

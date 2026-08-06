@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/capi",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }

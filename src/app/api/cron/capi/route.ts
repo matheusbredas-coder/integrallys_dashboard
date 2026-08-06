@@ -5,13 +5,18 @@ export const maxDuration = 60;
 // Always run fresh: this is a scheduled mutation (sends conversion events), never cached.
 export const dynamic = "force-dynamic";
 
-// Retry drain for the Meta Conversions API outbox, triggered by Vercel Cron (see vercel.json)
-// every 15 minutes. Same CRON_SECRET auth as /api/cron/sync — a cron invocation carries no
-// session cookie.
+// Retry drain for the Meta Conversions API outbox, triggered by Vercel Cron (see vercel.json).
+// Same CRON_SECRET auth as /api/cron/sync — a cron invocation carries no session cookie.
 //
-// Almost every event is already delivered inline by the stage-change action; this route only
-// exists for the ones that weren't, which is why a quiet run returning zeros is the normal
-// and expected outcome.
+// Almost every event is already delivered inline by `after()` in enqueueStageEvent; this route
+// only exists for the ones that weren't, which is why a quiet run returning zeros is the
+// normal and expected outcome.
+//
+// Runs once a day, not every 15 minutes: the Vercel account is on the Hobby plan, which
+// rejects any cron expression firing more than daily (the deploy fails outright, it does not
+// degrade). That is an acceptable ceiling here — a failed event has 7 days before Meta stops
+// accepting it, so a daily sweep has six days of headroom. If the plan is ever upgraded, a
+// tighter schedule is a one-line change in vercel.json.
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
