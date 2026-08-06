@@ -64,3 +64,34 @@ describe("previewFormLeadsCsv", () => {
     expect(res).toEqual({ error: "Nenhuma linha encontrada no arquivo." });
   });
 });
+
+import { commitFormLeadsCsv } from "./actions";
+
+describe("commitFormLeadsCsv", () => {
+  beforeEach(() => {
+    upsertSelect.mockResolvedValue({ data: [{ id: "row-1" }], error: null });
+  });
+
+  it("inserts only the new rows and reports each one to Meta", async () => {
+    const res = await commitFormLeadsCsv(CSV);
+    expect(res).toEqual({ ok: true, inserted: 1, duplicate: 2, invalid: 1 });
+    expect(enqueueStageEvent).toHaveBeenCalledTimes(1);
+    expect(enqueueStageEvent).toHaveBeenCalledWith("row-1", "novo");
+    expect(revalidateTag).toHaveBeenCalledWith("form-leads", { expire: 0 });
+  });
+
+  it("touches nothing when every row is a duplicate or invalid", async () => {
+    selectIn.mockResolvedValue({ data: [{ external_id: "l:1" }, { external_id: "l:3" }], error: null });
+    const res = await commitFormLeadsCsv(CSV);
+    expect(res).toEqual({ ok: true, inserted: 0, duplicate: 3, invalid: 1 });
+    expect(upsertSelect).not.toHaveBeenCalled();
+    expect(enqueueStageEvent).not.toHaveBeenCalled();
+    expect(revalidateTag).not.toHaveBeenCalled();
+  });
+
+  it("rejects when there is no session", async () => {
+    getUser.mockResolvedValue({ data: { user: null } });
+    const res = await commitFormLeadsCsv(CSV);
+    expect(res).toEqual({ error: "Sessão expirada. Entre novamente." });
+  });
+});

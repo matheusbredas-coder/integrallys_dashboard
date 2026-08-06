@@ -114,3 +114,72 @@ export async function previewFormLeadsCsv(
     },
   };
 }
+
+/**
+ * Commit a previously previewed CSV import: insert the rows classified "new" in one batched
+ * upsert, then report each genuinely inserted lead to Meta as "novo" — identical to what the
+ * webhook ingest route does for a brand new lead. Rows classified duplicate/invalid are
+ * skipped entirely, never updated.
+ */
+export async function commitFormLeadsCsv(
+  csvText: string
+): Promise<
+  | { ok: true; inserted: number; duplicate: number; invalid: number }
+  | { error: string }
+> {
+  const unauth = await requireUser();
+  if (unauth) return unauth;
+
+  const sb = createSupabaseServiceClient();
+  const classified = await classifyCsvText(sb, csvText);
+  if ("error" in classified) return classified;
+
+  const { rows } = classified;
+  const toInsert = rows.filter((r) => r.status === "new");
+
+  let insertedIds: string[] = [];
+  if (toInsert.length > 0) {
+    const { data, error } = await sb
+      .from("form_leads")
+      .upsert(
+        toInsert.map(({ lead }) => ({
+          source: "csv_import",
+          external_id: lead.external_id,
+          sheet_row: null,
+          campaign: lead.campaign,
+          form_name: lead.form_name,
+          name: lead.name,
+          phone: lead.phone,
+          email: lead.email,
+          raw: lead.raw,
+          submitted_at: lead.submitted_at,
+        })),
+        { onConflict: "external_id", ignoreDuplicates: true }
+      )
+      .select("id");
+
+    if (error) {
+      console.error("[form-leads] csv import failed", error);
+      return { error: "Não foi possível importar os leads." };
+    }
+    insertedIds = (data ?? []).map((d) => d.id as string);
+  }
+
+  // Same best-effort stance as updateFormLeadStage: the rows are already committed, and a
+  // Meta problem must not turn a successful import into an error the user sees.
+  for (const id of insertedIds) {
+    const capi = await enqueueStageEvent(id, "novo");
+    if (capi.queued && capi.reason) {
+      console.warn(`[form-leads] csv import lead ${id}: CAPI event queued (${capi.reason})`);
+    }
+  }
+
+  if (insertedIds.length > 0) revalidateTag("form-leads", { expire: 0 });
+
+  return {
+    ok: true,
+    inserted: insertedIds.length,
+    duplicate: rows.filter((r) => r.status === "duplicate").length,
+    invalid: rows.filter((r) => r.status === "invalid").length,
+  };
+}
