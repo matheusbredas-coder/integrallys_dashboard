@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatDateTimeBrt } from "@/lib/format";
-import { updateFormLeadStage } from "./actions";
+import { commitFormLeadsCsv, previewFormLeadsCsv, updateFormLeadStage } from "./actions";
 import { FORM_LEAD_STAGES, STAGE_LABELS, type FormLeadRow, type FormLeadStage } from "./types";
 
 const PAGE = 25;
@@ -69,6 +69,7 @@ export function FormLeadsTable({ rows }: { rows: FormLeadRow[] }) {
             style={{ flex: 1, maxWidth: 340, padding: "10px 14px", borderRadius: 12, background: "var(--panel-hi)", border: "1px solid var(--line)", color: "var(--txt)", fontSize: 13 }}
           />
           <span className="muted" style={{ fontSize: 12 }}>{filtered.length} leads</span>
+          <CsvImportButton onError={setError} />
         </div>
 
         {error && (
@@ -230,6 +231,113 @@ const confirmBtn: React.CSSProperties = {
   fontWeight: 600,
   cursor: "pointer",
 };
+
+type CsvSummary = { total: number; new: number; duplicate: number; invalid: number };
+
+function CsvImportButton({ onError }: { onError: (msg: string | null) => void }) {
+  const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [pending, startTransition] = useTransition();
+  // Holds the file's text once read, so Confirmar can re-send it to commitFormLeadsCsv
+  // without asking the user to pick the file again.
+  const [csvText, setCsvText] = useState<string | null>(null);
+  const [summary, setSummary] = useState<CsvSummary | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // clears the input so picking the same file again still fires onChange
+    if (!file) return;
+
+    onError(null);
+    setResult(null);
+    setSummary(null);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result ?? "");
+      setCsvText(text);
+      startTransition(async () => {
+        const res = await previewFormLeadsCsv(text);
+        if ("error" in res) {
+          onError(res.error);
+          setCsvText(null);
+          return;
+        }
+        setSummary(res.summary);
+      });
+    };
+    reader.readAsText(file);
+  }
+
+  function cancel() {
+    setCsvText(null);
+    setSummary(null);
+  }
+
+  function confirm() {
+    if (!csvText) return;
+    startTransition(async () => {
+      const res = await commitFormLeadsCsv(csvText);
+      if ("error" in res) {
+        onError(res.error);
+        return;
+      }
+      setCsvText(null);
+      setSummary(null);
+      setResult(
+        `${res.inserted} leads novos adicionados, ${res.duplicate} já existiam, ${res.invalid} inválidos.`
+      );
+      router.refresh();
+    });
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".csv"
+          onChange={onFileChange}
+          style={{ display: "none" }}
+        />
+        <button onClick={() => inputRef.current?.click()} disabled={pending} style={pgBtn}>
+          Importar CSV
+        </button>
+        {result && <span className="muted" style={{ fontSize: 12 }}>{result}</span>}
+      </div>
+
+      {summary && (
+        <div className="card" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8, fontSize: 12.5 }}>
+          <span>
+            {summary.new} leads novos, {summary.duplicate} já existem, {summary.invalid} inválidos (de{" "}
+            {summary.total} linhas).
+          </span>
+          <span style={{ color: "#bf6b6b", fontSize: 11 }}>
+            Uma vez confirmado, os novos leads são reportados ao Meta.
+          </span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={confirm}
+              disabled={pending}
+              style={{ ...confirmBtn, background: "#6bbf73", color: "#0b0f0d" }}
+            >
+              Confirmar
+            </button>
+            <button
+              onClick={cancel}
+              disabled={pending}
+              style={{ ...confirmBtn, background: "transparent", border: "1px solid var(--line)", color: "var(--muted)" }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function StageCounts({ counts, total }: { counts: Record<string, number>; total: number }) {
   if (total === 0) return null;
