@@ -4,6 +4,7 @@ import { revalidateTag } from "next/cache";
 import { createSupabaseServerClient, createSupabaseServiceClient } from "@/lib/supabase/server";
 import { enqueueStageEvent } from "@/features/capi/queue";
 import { isFormLeadStage } from "./types";
+import { classifyCsvLeads, parseCsvLeads, type ClassifiedCsvLeadRow } from "./csv";
 
 // Session guard, same shape as features/campaigns/actions.ts: the service-role client
 // below bypasses RLS, so every action must first prove there's a real logged-in user.
@@ -54,4 +55,62 @@ export async function updateFormLeadStage(
 
   revalidateTag("form-leads", { expire: 0 });
   return { ok: true };
+}
+
+/**
+ * Parses and classifies a CSV's leads against what's already in `form_leads`. Shared by
+ * previewFormLeadsCsv (which stops here) and commitFormLeadsCsv (which also writes).
+ */
+async function classifyCsvText(
+  sb: ReturnType<typeof createSupabaseServiceClient>,
+  csvText: string
+): Promise<{ rows: ClassifiedCsvLeadRow[] } | { error: string }> {
+  const rows = parseCsvLeads(csvText);
+  if (rows.length === 0) return { error: "Nenhuma linha encontrada no arquivo." };
+
+  const ids = [
+    ...new Set(rows.map((r) => r.lead.external_id).filter((id): id is string => id !== null)),
+  ];
+
+  let existing = new Set<string>();
+  if (ids.length > 0) {
+    const { data, error } = await sb.from("form_leads").select("external_id").in("external_id", ids);
+    if (error) {
+      console.error("[form-leads] csv external_id lookup failed", error);
+      return { error: "Não foi possível verificar os leads existentes." };
+    }
+    existing = new Set((data ?? []).map((d) => d.external_id as string));
+  }
+
+  return { rows: classifyCsvLeads(rows, existing) };
+}
+
+/**
+ * Preview a CSV import: how many rows are new, already in the CRM, or unusable. Writes
+ * nothing and never touches Meta — that only happens in commitFormLeadsCsv, and only after
+ * the user confirms this preview.
+ */
+export async function previewFormLeadsCsv(
+  csvText: string
+): Promise<
+  | { ok: true; summary: { total: number; new: number; duplicate: number; invalid: number } }
+  | { error: string }
+> {
+  const unauth = await requireUser();
+  if (unauth) return unauth;
+
+  const sb = createSupabaseServiceClient();
+  const classified = await classifyCsvText(sb, csvText);
+  if ("error" in classified) return classified;
+
+  const { rows } = classified;
+  return {
+    ok: true,
+    summary: {
+      total: rows.length,
+      new: rows.filter((r) => r.status === "new").length,
+      duplicate: rows.filter((r) => r.status === "duplicate").length,
+      invalid: rows.filter((r) => r.status === "invalid").length,
+    },
+  };
 }
