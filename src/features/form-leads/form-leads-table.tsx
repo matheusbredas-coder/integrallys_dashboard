@@ -146,10 +146,16 @@ function StageSelect({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // The select shows this while it differs from `value`; nothing is sent to the server (and
+  // no Meta event fires) until the user confirms with Salvar. Picking a stage is easy to do
+  // by accident on a table with one <select> per row, and a CAPI event, once sent, can't be
+  // un-sent — so the commit needs an explicit second step, not just a dropdown change.
+  const [draft, setDraft] = useState<FormLeadStage | null>(null);
 
-  function change(next: FormLeadStage) {
+  function commit(next: FormLeadStage) {
     onError(null);
     onOptimistic(next);
+    setDraft(null);
     startTransition(async () => {
       const res = await updateFormLeadStage(leadId, next);
       if ("error" in res) {
@@ -161,31 +167,69 @@ function StageSelect({
     });
   }
 
+  const shownValue = draft ?? value;
+
   return (
-    <select
-      value={value}
-      disabled={pending}
-      onChange={(e) => change(e.target.value as FormLeadStage)}
-      style={{
-        background: "var(--panel-hi)",
-        border: "1px solid var(--line)",
-        borderRadius: 10,
-        padding: "6px 10px",
-        fontSize: 12.5,
-        fontWeight: 600,
-        color: STAGE_COLORS[value] ?? "var(--txt)",
-        cursor: pending ? "wait" : "pointer",
-        opacity: pending ? 0.6 : 1,
-      }}
-    >
-      {FORM_LEAD_STAGES.map((s) => (
-        <option key={s} value={s} style={{ color: "var(--txt)", background: "var(--panel-hi)" }}>
-          {STAGE_LABELS[s]}
-        </option>
-      ))}
-    </select>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <select
+        value={shownValue}
+        disabled={pending}
+        onChange={(e) => {
+          const next = e.target.value as FormLeadStage;
+          setDraft(next === value ? null : next);
+        }}
+        style={{
+          background: "var(--panel-hi)",
+          border: "1px solid var(--line)",
+          borderRadius: 10,
+          padding: "6px 10px",
+          fontSize: 12.5,
+          fontWeight: 600,
+          color: STAGE_COLORS[shownValue] ?? "var(--txt)",
+          cursor: pending ? "wait" : "pointer",
+          opacity: pending ? 0.6 : 1,
+        }}
+      >
+        {FORM_LEAD_STAGES.map((s) => (
+          <option key={s} value={s} style={{ color: "var(--txt)", background: "var(--panel-hi)" }}>
+            {STAGE_LABELS[s]}
+          </option>
+        ))}
+      </select>
+
+      {draft && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, whiteSpace: "normal" }}>
+          <span style={{ fontSize: 11, color: "#bf6b6b" }}>Uma vez mudado, não tem volta.</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={() => commit(draft)}
+              disabled={pending}
+              style={{ ...confirmBtn, background: "#6bbf73", color: "#0b0f0d" }}
+            >
+              Salvar
+            </button>
+            <button
+              onClick={() => setDraft(null)}
+              disabled={pending}
+              style={{ ...confirmBtn, background: "transparent", border: "1px solid var(--line)", color: "var(--muted)" }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
+
+const confirmBtn: React.CSSProperties = {
+  border: "none",
+  borderRadius: 8,
+  padding: "4px 10px",
+  fontSize: 11.5,
+  fontWeight: 600,
+  cursor: "pointer",
+};
 
 function StageCounts({ counts, total }: { counts: Record<string, number>; total: number }) {
   if (total === 0) return null;
