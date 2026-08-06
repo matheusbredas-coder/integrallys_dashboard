@@ -22,6 +22,10 @@ Apply these in order in the Supabase SQL editor (Dashboard → SQL Editor), or v
 17. `017_bot_leads_sent_images.sql` — adds `bot_leads.sent_image_urls` (per-lead pitch-image dedup).
 18. `018_reactivation_campaigns.sql` — campaigns table for reactivation campaign storage and bot_leads reactivation columns (track, last_template_at). **Depends on 016 being applied with its current `bot_leads` naming** (016 and 017 are both still uncommitted/unapplied as of this entry).
 19. `019_bot_appointment_confirmations.sql` — `bot_appointment_confirmations` table (day-before WhatsApp confirmation audit/idempotency, bot-owned), `bot_leads` columns `pending_confirmation_agenda_id`/`origin`, and widens `agenda_attendance`'s source check to allow `'whatsapp'`.
+20. `020_wa_links.sql` — tracked WhatsApp click-to-chat links (`/r/<slug>`) and their click counts.
+21. `021_form_leads.sql` — `form_leads` table for Meta Instant Form leads, ingested by the n8n Gmail workflow via `/api/leads/form`. See `docs/gmail-form-leads.md`.
+22. `022_form_leads_protocolo.sql` — adds `form_leads.protocolo` (treatment programme), `not null default 'emagrecimento'` so existing rows backfill in place. Shown as a column on `/marketing`.
+23. `023_capi_events.sql` — `capi_events` outbox for Meta Conversions API events fired when a form lead reaches a high-intent stage. **Depends on 021.** The `payload` column holds the already-hashed request body, never plaintext PII. See `docs/meta-capi.md`.
 
 After applying 001/002, sanity-check:
 ```sql

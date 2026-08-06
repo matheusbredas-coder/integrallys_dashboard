@@ -1,25 +1,10 @@
 import "server-only";
 import { postSlackMessage, type SlackBlock } from "@/lib/slack";
+import { formatDateTimeBrt } from "@/lib/format";
 import type { MappedLead } from "./mapping";
 
 // Slack alert for a newly ingested Meta Instant Form lead. Only the ingest route calls
 // this, and only after a row was genuinely inserted — never on a duplicate or a retry.
-
-const dateTime = new Intl.DateTimeFormat("pt-BR", {
-  timeZone: "America/Sao_Paulo",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
-/** "31/07/2026 14:23" in BRT, or "—" if we never got a usable timestamp. */
-function formatBrt(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : dateTime.format(d);
-}
 
 /** Slack renders mrkdwn, so user-supplied text must not be able to inject formatting. */
 function escapeMrkdwn(v: string | null): string {
@@ -55,7 +40,9 @@ export function buildNewLeadBlocks(lead: MappedLead): {
     },
     {
       type: "context",
-      elements: [{ type: "mrkdwn", text: `Recebido em ${formatBrt(lead.submitted_at)} (BRT)` }],
+      elements: [
+        { type: "mrkdwn", text: `Recebido em ${formatDateTimeBrt(lead.submitted_at)} (BRT)` },
+      ],
     },
   ];
 

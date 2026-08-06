@@ -5,6 +5,8 @@ import {
   mapSheetFields,
   normalizeHeader,
   parseSubmittedAt,
+  resolveExternalId,
+  resolveSource,
 } from "./mapping";
 
 // The column set Meta's Lead Ads -> Sheets integration produces for a standard form.
@@ -258,6 +260,33 @@ describe("coerceIngestFields", () => {
     expect(coerceIngestFields(null)).toEqual({});
     expect(coerceIngestFields("oi")).toEqual({});
     expect(coerceIngestFields([1, 2])).toEqual({});
+  });
+});
+
+describe("resolveExternalId", () => {
+  it("prefers the lead id the payload carried", () => {
+    expect(resolveExternalId("l_10223344", { message_id: "1994a1f0" })).toBe("l_10223344");
+  });
+
+  it("falls back to the Gmail message id so a retry can't insert twice", () => {
+    expect(resolveExternalId(null, { message_id: "1994a1f0" })).toBe("gmail:1994a1f0");
+  });
+
+  it("ignores a blank or non-string message id", () => {
+    expect(resolveExternalId(null, { message_id: "   " })).toBeNull();
+    expect(resolveExternalId(null, { message_id: 42 })).toBeNull();
+    expect(resolveExternalId(null, {})).toBeNull();
+  });
+});
+
+describe("resolveSource", () => {
+  it("marks a forwarded email", () => {
+    expect(resolveSource({ body: "Nome: Ana" })).toBe("gmail_lead_nova");
+  });
+
+  it("leaves every other shape on the original source", () => {
+    expect(resolveSource(ottokitBody)).toBe("meta_instant_form");
+    expect(resolveSource({ fields: metaRow })).toBe("meta_instant_form");
   });
 });
 

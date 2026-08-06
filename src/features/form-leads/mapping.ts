@@ -5,14 +5,17 @@
 // matched against a normalized label, and *every* original field is kept in `raw` — a
 // question we failed to map is still recoverable.
 //
-// Two callers, two payload shapes, both funnelled through `coerceIngestFields`:
-//   - Ottokit's Facebook Lead Ads trigger — flat ad metadata at the top level, with the
-//     lead's actual answers nested in `field_data`.
+// Three payload shapes, all funnelled through `coerceIngestFields`:
+//   - an n8n Gmail workflow — the "Lead Nova" email's text under `body`, parsed by
+//     `parseLeadEmail` (see email-parse.ts). This is the live ingest.
+//   - (historical) Ottokit's Facebook Lead Ads trigger — flat ad metadata at the top level,
+//     with the lead's actual answers nested in `field_data`. Retired 2026-08.
 //   - (historical) a Google Sheet row as a flat header -> cell map under `fields`.
 //
 // Pure (no I/O) so it stays trivially unit-testable. See mapping.test.ts.
 
 import { normalizePhone } from "@/features/wa-links/link";
+import { parseLeadEmail } from "./email-parse";
 
 export type MappedLead = {
   external_id: string | null;
@@ -174,16 +177,33 @@ export function flattenFieldData(value: unknown): Record<string, string> {
 // `secret` is in here for a stronger reason than tidiness: the ingest route accepts the
 // shared secret in the body (see its `isAuthorized`), and `raw` is persisted verbatim —
 // without this the credential would be written into the database with every lead.
-const RESERVED_BODY_KEYS = new Set(["row", "submitted_at", "fields", "field_data", "secret"]);
+//
+// `body` (the "Lead Nova" email text) is reserved because it's consumed by `parseLeadEmail`;
+// keeping it would store the whole message again alongside the fields extracted from it.
+// `message_id` and `subject` are deliberately NOT reserved — they're small, and they're how
+// you trace a stored lead back to the email it arrived in.
+const RESERVED_BODY_KEYS = new Set([
+  "row",
+  "submitted_at",
+  "fields",
+  "field_data",
+  "body",
+  "secret",
+]);
 
 /**
- * Pick the field map out of an ingest body, whichever shape it arrived in.
+ * Pick the field map out of an ingest body, whichever of the three shapes it arrived in.
  *
  * An explicit `fields` object is honoured verbatim — that's the original nested contract.
- * Otherwise the body is treated as Ottokit's flat Facebook Lead Ads payload: top-level ad
- * metadata (`campaign_name`, `ad_name`, `form_id`, ...) plus `field_data`, whose entries
- * are merged *over* the metadata. The lead's own answers outrank the ad they arrived from,
- * so a form question named `campaign_name` can't be shadowed by the campaign it ran under.
+ * Otherwise the top level is read as envelope metadata, and the lead's own answers are merged
+ * *over* it from whichever carrier is present:
+ *
+ *   - `field_data` — Ottokit's flat Facebook Lead Ads payload (retired 2026-08, kept working).
+ *   - `body`       — the "Lead Nova" email text forwarded by the n8n Gmail workflow.
+ *
+ * Answers outranking metadata is the rule in both cases, so a form question named
+ * `campaign_name` can't be shadowed by the campaign it ran under, and one named `subject`
+ * can't be shadowed by the email's subject line.
  */
 export function coerceIngestFields(body: unknown): Record<string, unknown> {
   if (!isPlainObject(body)) return {};
@@ -198,7 +218,47 @@ export function coerceIngestFields(body: unknown): Record<string, unknown> {
   }
 
   Object.assign(out, flattenFieldData(body.field_data));
+
+  if (typeof body.body === "string") {
+    const emailFields = parseLeadEmail(body.body);
+    // An email that yielded nothing is not a lead, even though the envelope (`message_id`,
+    // `subject`, ...) is full of keys. Returning {} is what lets the route answer 400 rather
+    // than storing a row with every column null — which is exactly what a misconfigured n8n
+    // expression produces, and the case you most need to see fail loudly.
+    if (Object.keys(emailFields).length === 0) return {};
+    Object.assign(out, emailFields);
+  }
+
   return out;
+}
+
+/**
+ * The value to dedupe on: Meta's lead id when the payload carried one, otherwise the Gmail
+ * message id the "Lead Nova" email arrived as.
+ *
+ * The fallback is what makes the n8n HTTP node's retries safe. Gmail message ids are unique
+ * and never reused, so a re-POST of the same email hits the unique index in migration 021 and
+ * settles as `duplicate: true` instead of inserting a second row. Prefixed with `gmail:` so it
+ * can never collide with a Meta lead id.
+ *
+ * Null when there's neither — the column stays nullable and Postgres treats NULLs as distinct,
+ * so such a lead is simply never deduped. Only a hand-rolled POST reaches that case.
+ */
+export function resolveExternalId(mapped: string | null, body: unknown): string | null {
+  if (mapped) return mapped;
+  if (!isPlainObject(body)) return null;
+  const messageId = typeof body.message_id === "string" ? body.message_id.trim() : "";
+  return messageId === "" ? null : `gmail:${messageId}`;
+}
+
+/**
+ * Which ingest a row came from. Not rendered anywhere — it exists so the eras stay
+ * distinguishable in Supabase once leads from the retired Ottokit webhook and the current
+ * Gmail workflow sit in the same table.
+ */
+export function resolveSource(body: unknown): string {
+  if (isPlainObject(body) && typeof body.body === "string") return "gmail_lead_nova";
+  return "meta_instant_form";
 }
 
 export function mapSheetFields(fields: Record<string, unknown>): MappedLead {

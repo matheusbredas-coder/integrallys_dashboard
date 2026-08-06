@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { formatDate } from "@/lib/format";
+import { formatDateTimeBrt } from "@/lib/format";
 import { updateFormLeadStage } from "./actions";
 import { FORM_LEAD_STAGES, STAGE_LABELS, type FormLeadRow, type FormLeadStage } from "./types";
 
@@ -13,6 +13,9 @@ const PAGE = 25;
 const STAGE_COLORS: Record<FormLeadStage, string> = {
   novo: "var(--muted)",
   contatado: "#7aa2f7",
+  // Deliberately warmer than `contatado`: the two are one step apart in the funnel but a
+  // world apart in meaning — `contatado` is what we did, `respondeu` is what the lead did.
+  respondeu: "#56c5c0",
   qualificado: "#b48ead",
   agendado: "#e0af68",
   ganho: "#6bbf73",
@@ -32,8 +35,10 @@ export function FormLeadsTable({ rows }: { rows: FormLeadRow[] }) {
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return rows;
+    // Campaign and form name are no longer columns, but stay searchable — they're still on
+    // the row and someone who knows the campaign can still find its leads.
     return rows.filter((r) =>
-      [r.name, r.phone, r.email, r.campaign, r.form_name].some((v) =>
+      [r.name, r.phone, r.email, r.protocolo, r.campaign, r.form_name].some((v) =>
         String(v ?? "").toLowerCase().includes(needle)
       )
     );
@@ -60,7 +65,7 @@ export function FormLeadsTable({ rows }: { rows: FormLeadRow[] }) {
           <input
             value={q}
             onChange={(e) => { setQ(e.target.value); setPage(0); }}
-            placeholder="Pesquisar por nome, telefone, campanha…"
+            placeholder="Pesquisar por nome, telefone, e-mail…"
             style={{ flex: 1, maxWidth: 340, padding: "10px 14px", borderRadius: 12, background: "var(--panel-hi)", border: "1px solid var(--line)", color: "var(--txt)", fontSize: 13 }}
           />
           <span className="muted" style={{ fontSize: 12 }}>{filtered.length} leads</span>
@@ -76,7 +81,7 @@ export function FormLeadsTable({ rows }: { rows: FormLeadRow[] }) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr>
-                {["Nome", "Telefone", "E-mail", "Campanha", "Formulário", "Recebido", "Etapa"].map((label) => (
+                {["Nome", "E-mail", "Telefone", "Criado em", "Protocolo", "Adicionado em", "Etapa"].map((label) => (
                   <th key={label} style={th}>{label}</th>
                 ))}
               </tr>
@@ -85,6 +90,7 @@ export function FormLeadsTable({ rows }: { rows: FormLeadRow[] }) {
               {pageRows.map((r) => (
                 <tr key={r.id} style={{ borderBottom: "1px solid var(--line)" }}>
                   <td style={{ ...td, color: "#fff", fontWeight: 600 }}>{r.name ?? "—"}</td>
+                  <td style={td}>{r.email ?? "—"}</td>
                   <td style={td}>
                     {r.phone ? (
                       <a href={`https://wa.me/${r.phone}`} target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }}>
@@ -92,10 +98,11 @@ export function FormLeadsTable({ rows }: { rows: FormLeadRow[] }) {
                       </a>
                     ) : "—"}
                   </td>
-                  <td style={td}>{r.email ?? "—"}</td>
-                  <td style={td}>{r.campaign ?? "—"}</td>
-                  <td style={td}>{r.form_name ?? "—"}</td>
-                  <td style={td}>{formatReceived(r)}</td>
+                  {/* When the lead filled the form, vs. when we ingested it — the gap between
+                      them is how far behind the Gmail workflow is running. */}
+                  <td style={td}>{formatDateTimeBrt(r.submitted_at)}</td>
+                  <td style={{ ...td, textTransform: "capitalize" }}>{r.protocolo || "—"}</td>
+                  <td style={td}>{formatDateTimeBrt(r.created_at)}</td>
                   <td style={{ ...td, overflow: "visible" }}>
                     <StageSelect
                       leadId={r.id}
@@ -196,12 +203,6 @@ function StageCounts({ counts, total }: { counts: Record<string, number>; total:
       ))}
     </div>
   );
-}
-
-/** Prefer the form's own submission time; fall back to when we ingested it. */
-function formatReceived(r: FormLeadRow): string {
-  const d = new Date(r.submitted_at ?? r.created_at);
-  return isNaN(d.getTime()) ? "—" : formatDate(d);
 }
 
 const th: React.CSSProperties = { textAlign: "left", padding: "12px 14px", color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", fontSize: 11, letterSpacing: ".4px", whiteSpace: "nowrap", borderBottom: "1px solid var(--line)" };

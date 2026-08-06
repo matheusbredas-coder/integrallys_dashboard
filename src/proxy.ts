@@ -37,9 +37,9 @@ export const config = {
   // kills the scheduled sync.
   // r/* is excluded: the public WhatsApp click-to-chat redirect must work with no session
   // (shared in bios, ads, QR codes) — a redirect to /login would break every tracked link.
-  // api/leads/* is excluded for the same reason as api/cron/*: Ottokit posts new Meta form
-  // leads with no session cookie and authenticates with FORM_LEADS_SECRET inside the route
-  // handler. A redirect to /login here would make every lead silently vanish — Ottokit
-  // would see a 307, count it as delivered, and move on.
+  // api/leads/* is excluded for the same reason as api/cron/*: the n8n Gmail workflow posts
+  // new Meta form leads with no session cookie and authenticates with FORM_LEADS_SECRET
+  // inside the route handler. A redirect to /login here would make every lead silently
+  // vanish — n8n would see a 307, count it as delivered, and move on.
   matcher: ["/((?!_next/static|_next/image|favicon.ico|api/cron/|api/leads/|r/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

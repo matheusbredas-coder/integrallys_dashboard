@@ -1,10 +1,11 @@
--- Meta Ads Instant Form leads. An Ottokit workflow subscribes to the Facebook Lead Ads
--- "New Lead" trigger and POSTs each lead to /api/leads/form, which inserts it here.
--- See docs/ottokit-form-leads.md for the Ottokit side.
+-- Meta Ads Instant Form leads. An n8n workflow watches Gmail for the "Lead Nova" notification
+-- email and POSTs each message to /api/leads/form, which parses the lead out of it and
+-- inserts it here. See docs/gmail-form-leads.md for the n8n side.
 --
--- (Comment updated after this migration was applied; the DDL below is unchanged. The
--- original ingest was a Google Sheet polled by a bound Apps Script, retired in favour of
--- Ottokit — which is why `sheet_row` exists and is null on every lead since.)
+-- (Comment updated after this migration was applied; the DDL below is unchanged. The original
+-- ingest was a Google Sheet polled by a bound Apps Script — which is why `sheet_row` exists
+-- and is null on every lead since — then an Ottokit webhook on Meta's Facebook Lead Ads
+-- trigger, retired 2026-08 in favour of the Gmail workflow.)
 --
 -- Self-contained: no dependency on the still-pending campaigns / bot_leads rename
 -- migrations (016-018). Same stance as 020_wa_links.sql.

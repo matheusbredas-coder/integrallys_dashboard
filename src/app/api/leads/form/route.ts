@@ -1,26 +1,37 @@
 import { revalidateTag } from "next/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { coerceIngestFields, mapSheetFields } from "@/features/form-leads/mapping";
+import {
+  coerceIngestFields,
+  mapSheetFields,
+  resolveExternalId,
+  resolveSource,
+} from "@/features/form-leads/mapping";
 import { notifyNewFormLead } from "@/features/form-leads/notify";
+import { enqueueStageEvent } from "@/features/capi/queue";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 // Always run fresh: this is an ingest endpoint, never cacheable.
 export const dynamic = "force-dynamic";
 
-// Ingest for Meta Ads Instant Form leads. An Ottokit workflow subscribes to the Facebook
-// Lead Ads "New Lead" trigger and POSTs each lead here through its Webhooks -> Custom
-// Request action. Same Bearer-secret shape as /api/cron/* — there's no session on a
-// machine-to-machine request — but its own secret, since it's a different caller.
+// Ingest for Meta Ads Instant Form leads. An n8n workflow watches Gmail for the "Lead Nova"
+// notification email and POSTs the message here. Same Bearer-secret shape as /api/cron/* —
+// there's no session on a machine-to-machine request — but its own secret, since it's a
+// different caller. See docs/gmail-form-leads.md for the n8n side.
 //
-// Two body shapes are accepted, both resolved by `coerceIngestFields`: Ottokit's flat
-// payload (ad metadata at the top level, answers nested in `field_data`), and an explicit
-// `{ fields: { label: answer } }` map. The latter is what the retired Google Sheet /
-// Apps Script poller sent; it's kept so a manual replay or curl test still works.
+// Three body shapes are accepted, all resolved by `coerceIngestFields`:
+//   - `{ message_id, subject, body, received_at }` — the live n8n Gmail path; the lead's
+//     fields are parsed out of `body` by `parseLeadEmail`.
+//   - Ottokit's flat payload (ad metadata at the top level, answers nested in `field_data`).
+//     Retired 2026-08, still accepted so a replay of an old payload works.
+//   - an explicit `{ fields: { label: answer } }` map — what the retired Google Sheet /
+//     Apps Script poller sent, kept so a manual replay or curl test still works.
 
 type IngestBody = {
   row?: number;
   submitted_at?: string;
+  received_at?: string;
+  message_id?: string;
   fields?: Record<string, unknown>;
   [key: string]: unknown;
 };
@@ -100,17 +111,18 @@ export async function POST(req: Request) {
 
   const lead = mapSheetFields(fields);
 
-  // A timestamp among the fields wins (Meta's `created_time`); body.submitted_at is the
-  // caller's fallback for payloads that carry none.
-  const submittedAt = lead.submitted_at ?? body.submitted_at ?? null;
+  // A timestamp among the fields wins (Meta's `created_time`, or the email's own "Data de
+  // envio" line). `submitted_at` is the caller's explicit fallback; `received_at` is when
+  // Gmail received the notification — the closest stand-in when the email carries no date.
+  const submittedAt = lead.submitted_at ?? body.submitted_at ?? body.received_at ?? null;
 
   const sb = createSupabaseServiceClient();
   const { data, error } = await sb
     .from("form_leads")
     .upsert(
       {
-        source: "meta_instant_form",
-        external_id: lead.external_id,
+        source: resolveSource(body),
+        external_id: resolveExternalId(lead.external_id, body),
         // Only the retired Sheets poller ever set this; Ottokit leads leave it null.
         sheet_row: typeof body.row === "number" ? body.row : null,
         campaign: lead.campaign,
@@ -143,12 +155,24 @@ export async function POST(req: Request) {
 
   revalidateTag("form-leads", { expire: 0 });
 
+  // The lead's opening stage, reported to Meta's Conversions API. Their CRM integration guide
+  // requires a trigger for every funnel stage "incluindo o estágio inicial do lead" — without
+  // it Meta sees qualified and won leads with no denominator to read them against.
+  //
+  // Only on a genuine insert, never on a duplicate: the `if (!inserted)` above has already
+  // returned, and `capi_events` has its own unique index behind that. Best-effort like the
+  // Slack call below — the lead is recorded either way, and the cron owns the retry.
+  const capi = await enqueueStageEvent(inserted, "novo");
+  if (capi.queued && capi.reason) {
+    console.warn(`[form-leads] lead ${inserted}: CAPI Lead event queued (${capi.reason})`);
+  }
+
   // Slack is best-effort and must never fail this request: the lead is already safely
   // recorded, and a non-2xx would only make the caller resend a lead we have.
   //
-  // Normally off — the Ottokit workflow does its own Slack + Gmail notification, so
-  // SLACK_WEBHOOK_URL is left unset to avoid double-posting. Only log a failure when a
-  // webhook is actually configured; otherwise every lead would log a false alarm.
+  // Normally off — the "Lead Nova" email that triggers this ingest is itself the
+  // notification, so SLACK_WEBHOOK_URL is left unset. Only log a failure when a webhook is
+  // actually configured; otherwise every lead would log a false alarm.
   const slack = await notifyNewFormLead({ ...lead, submitted_at: submittedAt });
   if (!slack && process.env.SLACK_WEBHOOK_URL) {
     console.error(`[form-leads] lead ${inserted} recorded but Slack notification failed`);

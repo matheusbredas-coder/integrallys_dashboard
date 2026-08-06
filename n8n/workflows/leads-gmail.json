@@ -1,0 +1,93 @@
+{
+  "name": "Leads - Gmail (Lead Nova)",
+  "nodes": [
+    {
+      "id": "lg000001-0001-0001-0001-000000000001",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "pollTimes": {
+          "item": [{ "mode": "everyMinute" }]
+        },
+        "simple": false,
+        "filters": {
+          "q": "subject:\"Lead Nova\""
+        },
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "GMAIL_CRED_ID",
+          "name": "Gmail - leads"
+        }
+      }
+    },
+
+    {
+      "id": "lg000001-0002-0002-0002-000000000002",
+      "name": "POST to CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://integrallys-crm.vercel.app/api/leads/form",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  message_id:  $json.id,\n  subject:     $json.subject,\n  body:        $json.text || $json.textAsHtml || $json.html,\n  received_at: $json.date\n}) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "FORM_LEADS_SECRET_CRED_ID",
+          "name": "CRM - form leads secret"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+
+    {
+      "id": "lg000001-0003-0003-0003-000000000003",
+      "name": "Label as ingested",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [800, 300],
+      "parameters": {
+        "resource": "message",
+        "operation": "addLabels",
+        "messageId": "={{ $('Gmail Trigger').item.json.id }}",
+        "labelIds": ["CRM_INGERIDO_LABEL_ID"]
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "GMAIL_CRED_ID",
+          "name": "Gmail - leads"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+
+  "connections": {
+    "Gmail Trigger": {
+      "main": [[{ "node": "POST to CRM", "type": "main", "index": 0 }]]
+    },
+    "POST to CRM": {
+      "main": [[{ "node": "Label as ingested", "type": "main", "index": 0 }]]
+    }
+  },
+
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  },
+  "staticData": null
+}

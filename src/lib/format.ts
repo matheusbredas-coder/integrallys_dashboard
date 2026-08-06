@@ -40,3 +40,22 @@ export function formatDate(d: Date | null): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
+
+// Timestamps are stored as timestamptz and rendered by server components, so the runtime's
+// zone is whatever Vercel's is (UTC) — pinning America/Sao_Paulo is what makes a lead that
+// arrived at 22:30 BRT read as the 5th rather than the 6th.
+const dateTimeBrt = new Intl.DateTimeFormat("pt-BR", {
+  timeZone: "America/Sao_Paulo",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** An ISO timestamp as "DD/MM/YYYY, HH:MM" in BRT, or "—" if there isn't a usable one. */
+export function formatDateTimeBrt(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : dateTimeBrt.format(d);
+}

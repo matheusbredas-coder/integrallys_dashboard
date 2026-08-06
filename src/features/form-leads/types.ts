@@ -10,6 +10,8 @@ export type FormLeadRow = {
   phone: string | null;
   email: string | null;
   raw: Record<string, string>;
+  /** Treatment programme (migration 022). Lowercase in the DB, capitalized for display. */
+  protocolo: string;
   stage: FormLeadStage;
   notes: string | null;
   submitted_at: string | null;
@@ -23,9 +25,17 @@ export type FormLeadRow = {
  * adding a stage is a one-line code change with no migration. Keep `novo` first; it's
  * the column default in migration 021.
  */
+/**
+ * `contatado` and `respondeu` look similar but are opposites in the only way that matters:
+ * `contatado` records something *we* did (a WhatsApp message went out), while `respondeu`
+ * records something the *lead* did. Every lead we work reaches `contatado`, so on its own it
+ * carries no information — it's the reply that separates a real prospect from a form fill.
+ * The distinction is what Meta's Conversions API learns from. See docs/meta-capi.md.
+ */
 export const FORM_LEAD_STAGES = [
   "novo",
   "contatado",
+  "respondeu",
   "qualificado",
   "agendado",
   "ganho",
@@ -37,6 +47,7 @@ export type FormLeadStage = (typeof FORM_LEAD_STAGES)[number];
 export const STAGE_LABELS: Record<FormLeadStage, string> = {
   novo: "Novo",
   contatado: "Contatado",
+  respondeu: "Respondeu",
   qualificado: "Qualificado",
   agendado: "Agendado",
   ganho: "Ganho",
