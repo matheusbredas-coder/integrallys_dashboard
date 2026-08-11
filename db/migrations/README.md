@@ -26,6 +26,7 @@ Apply these in order in the Supabase SQL editor (Dashboard → SQL Editor), or v
 21. `021_form_leads.sql` — `form_leads` table for Meta Instant Form leads, ingested by the n8n Gmail workflow via `/api/leads/form`. See `docs/gmail-form-leads.md`.
 22. `022_form_leads_protocolo.sql` — adds `form_leads.protocolo` (treatment programme), `not null default 'emagrecimento'` so existing rows backfill in place. Shown as a column on `/marketing`.
 23. `023_capi_events.sql` — `capi_events` outbox for Meta Conversions API events fired when a form lead reaches a high-intent stage. **Depends on 021.** The `payload` column holds the already-hashed request body, never plaintext PII. See `docs/meta-capi.md`.
+24. `024_bot_appointment_reminders.sql` — adds `bot_appointment_confirmations.reminder_sent_at`, the idempotency guard for the bot's in-process 9am morning-of reminder job. **Depends on 019.**
 
 After applying 001/002, sanity-check:
 ```sql
