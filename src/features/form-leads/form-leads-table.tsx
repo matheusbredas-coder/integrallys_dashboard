@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatDateTimeBrt } from "@/lib/format";
-import { commitFormLeadsCsv, previewFormLeadsCsv, updateFormLeadStage } from "./actions";
+import { commitFormLeadsCsv, deleteFormLead, previewFormLeadsCsv, updateFormLeadStage } from "./actions";
 import { FORM_LEAD_STAGES, STAGE_LABELS, type FormLeadRow, type FormLeadStage } from "./types";
 
 const PAGE = 25;
@@ -112,6 +112,7 @@ export function FormLeadsTable({ rows }: { rows: FormLeadRow[] }) {
                       onRevert={() => setPendingStages((p) => { const next = { ...p }; delete next[r.id]; return next; })}
                       onError={setError}
                     />
+                    <DeleteLeadButton leadId={r.id} onError={setError} />
                   </td>
                 </tr>
               ))}
@@ -219,6 +220,60 @@ function StageSelect({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function DeleteLeadButton({ leadId, onError }: { leadId: string; onError: (msg: string | null) => void }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  // Same two-step confirm as the stage change: a delete can't be un-sent, so it needs an
+  // explicit second click rather than firing on the first one.
+  const [confirming, setConfirming] = useState(false);
+
+  function remove() {
+    onError(null);
+    startTransition(async () => {
+      const res = await deleteFormLead(leadId);
+      if ("error" in res) {
+        setConfirming(false);
+        onError(res.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  if (!confirming) {
+    return (
+      <button
+        onClick={() => setConfirming(true)}
+        style={{ ...confirmBtn, background: "transparent", border: "none", color: "var(--muted)", padding: "2px 0", fontSize: 11 }}
+      >
+        Remover
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, whiteSpace: "normal" }}>
+      <span style={{ fontSize: 11, color: "#bf6b6b" }}>Remover este lead? Não tem volta.</span>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          onClick={remove}
+          disabled={pending}
+          style={{ ...confirmBtn, background: "#bf6b6b", color: "#0b0f0d" }}
+        >
+          Remover
+        </button>
+        <button
+          onClick={() => setConfirming(false)}
+          disabled={pending}
+          style={{ ...confirmBtn, background: "transparent", border: "1px solid var(--line)", color: "var(--muted)" }}
+        >
+          Cancelar
+        </button>
+      </div>
     </div>
   );
 }

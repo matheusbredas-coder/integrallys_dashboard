@@ -58,6 +58,27 @@ export async function updateFormLeadStage(
 }
 
 /**
+ * Permanently remove a form lead. Used for junk/duplicate submissions — form leads have no
+ * downstream records depending on them (unlike sales), so there's no soft-delete/audit trail.
+ */
+export async function deleteFormLead(id: string): Promise<{ ok: true } | { error: string }> {
+  const unauth = await requireUser();
+  if (unauth) return unauth;
+  if (!id) return { error: "Lead não informado." };
+
+  const sb = createSupabaseServiceClient();
+  const { error } = await sb.from("form_leads").delete().eq("id", id);
+
+  if (error) {
+    console.error("[form-leads] delete failed", error);
+    return { error: "Não foi possível remover o lead." };
+  }
+
+  revalidateTag("form-leads", { expire: 0 });
+  return { ok: true };
+}
+
+/**
  * Parses and classifies a CSV's leads against what's already in `form_leads`. Shared by
  * previewFormLeadsCsv (which stops here) and commitFormLeadsCsv (which also writes).
  */
