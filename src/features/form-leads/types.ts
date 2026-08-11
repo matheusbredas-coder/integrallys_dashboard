@@ -24,6 +24,13 @@ export type FormLeadRow = {
  * constraint — is the source of truth: `updateFormLeadStage` validates against it, so
  * adding a stage is a one-line code change with no migration. Keep `novo` first; it's
  * the column default in migration 021.
+ *
+ * Two things move a lead through it now: a human dragging it on /marketing, and the
+ * Lead Qualifier Bot, which reports `contatado` when it opens the conversation and
+ * `agendado` once a booking lands in Gestek. The bot goes through
+ * POST /api/leads/form/stage rather than writing the column, so the Meta CAPI event
+ * fires either way — and that endpoint refuses `perdido` and `ganho`, which stay
+ * human-only decisions.
  */
 /**
  * `contatado` and `respondeu` look similar but are opposites in the only way that matters:

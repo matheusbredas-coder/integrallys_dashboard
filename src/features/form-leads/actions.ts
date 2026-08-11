@@ -15,8 +15,12 @@ async function requireUser(): Promise<{ error: string } | null> {
 }
 
 /**
- * Move a form lead to a new stage. Stages are only ever changed by hand from the Marketing
- * page — nothing automated writes this column.
+ * Move a form lead to a new stage, by hand, from the Marketing page.
+ *
+ * No longer the only writer: the Lead Qualifier Bot also advances leads it works,
+ * through POST /api/leads/form/stage — which does the same two things this does, in
+ * the same order, for the same reason. `perdido` and `ganho` remain human-only; that
+ * endpoint refuses them.
  *
  * A high-intent stage (qualificado / agendado / ganho) also reports a conversion to Meta, so
  * the Leads campaign can optimize for leads that go somewhere rather than for form volume.
