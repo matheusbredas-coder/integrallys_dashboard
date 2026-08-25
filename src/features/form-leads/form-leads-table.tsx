@@ -105,14 +105,18 @@ export function FormLeadsTable({ rows }: { rows: FormLeadRow[] }) {
                   <td style={{ ...td, textTransform: "capitalize" }}>{r.protocolo || "—"}</td>
                   <td style={td}>{formatDateTimeBrt(r.created_at)}</td>
                   <td style={{ ...td, overflow: "visible" }}>
-                    <StageSelect
-                      leadId={r.id}
-                      value={stageOf(r)}
-                      onOptimistic={(stage) => setPendingStages((p) => ({ ...p, [r.id]: stage }))}
-                      onRevert={() => setPendingStages((p) => { const next = { ...p }; delete next[r.id]; return next; })}
-                      onError={setError}
-                    />
-                    <DeleteLeadButton leadId={r.id} onError={setError} />
+                    {/* Select and delete sit side by side; both grow downwards when they open
+                        their confirm step, so the row keeps its top alignment. */}
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                      <StageSelect
+                        leadId={r.id}
+                        value={stageOf(r)}
+                        onOptimistic={(stage) => setPendingStages((p) => ({ ...p, [r.id]: stage }))}
+                        onRevert={() => setPendingStages((p) => { const next = { ...p }; delete next[r.id]; return next; })}
+                        onError={setError}
+                      />
+                      <DeleteLeadButton leadId={r.id} onError={setError} />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -230,6 +234,7 @@ function DeleteLeadButton({ leadId, onError }: { leadId: string; onError: (msg: 
   // Same two-step confirm as the stage change: a delete can't be un-sent, so it needs an
   // explicit second click rather than firing on the first one.
   const [confirming, setConfirming] = useState(false);
+  const [hover, setHover] = useState(false);
 
   function remove() {
     onError(null);
@@ -248,9 +253,25 @@ function DeleteLeadButton({ leadId, onError }: { leadId: string; onError: (msg: 
     return (
       <button
         onClick={() => setConfirming(true)}
-        style={{ ...confirmBtn, background: "transparent", border: "none", color: "var(--muted)", padding: "2px 0", fontSize: 11 }}
+        title="Remover lead"
+        aria-label="Remover lead"
+        style={{
+          ...confirmBtn,
+          background: "transparent",
+          border: "1px solid var(--line)",
+          borderRadius: 10,
+          // Matches the <select> next to it, so the two line up as one control pair.
+          height: 30,
+          width: 30,
+          padding: 0,
+          fontSize: 15,
+          lineHeight: 1,
+          color: hover ? "#bf6b6b" : "var(--muted)",
+        }}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
       >
-        Remover
+        ×
       </button>
     );
   }
