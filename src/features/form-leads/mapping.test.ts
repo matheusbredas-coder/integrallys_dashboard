@@ -6,7 +6,6 @@ import {
   normalizeHeader,
   parseSubmittedAt,
   resolveExternalId,
-  resolveSource,
 } from "./mapping";
 
 // The column set Meta's Lead Ads -> Sheets integration produces for a standard form.
@@ -276,17 +275,6 @@ describe("resolveExternalId", () => {
     expect(resolveExternalId(null, { message_id: "   " })).toBeNull();
     expect(resolveExternalId(null, { message_id: 42 })).toBeNull();
     expect(resolveExternalId(null, {})).toBeNull();
-  });
-});
-
-describe("resolveSource", () => {
-  it("marks a forwarded email", () => {
-    expect(resolveSource({ body: "Nome: Ana" })).toBe("gmail_lead_nova");
-  });
-
-  it("leaves every other shape on the original source", () => {
-    expect(resolveSource(ottokitBody)).toBe("meta_instant_form");
-    expect(resolveSource({ fields: metaRow })).toBe("meta_instant_form");
   });
 });
 

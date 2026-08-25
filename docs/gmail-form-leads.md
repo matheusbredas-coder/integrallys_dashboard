@@ -1,41 +1,81 @@
-# n8n Gmail — "Lead Nova" emails → CRM
+# n8n Gmail — "Lead Nova" leads → CRM
 
-An n8n workflow on the Easypanel VPS watches Gmail for messages with the subject
-**"Lead Nova"**, forwards the message to this app's `/api/leads/form`, and the route parses
-the lead out of the email body, stores it in `public.form_leads` and shows it under
+An n8n workflow on the Easypanel VPS watches Gmail for the **"Lead Nova"** notification email,
+pulls the lead's fields out of it, and POSTs them as flat JSON to this app's
+`/api/leads/form`. The route stores the lead in `public.form_leads`, and it appears under
 **Leads do formulário (Meta)** on `/marketing`.
 
-Workflow JSON: [`n8n/workflows/leads-gmail.json`](../n8n/workflows/leads-gmail.json).
+```
+Gmail Trigger  (subject:"Lead Nova")
+  └─→ (extract the fields — n8n's side)
+        └─→ HTTP Request  POST /api/leads/form   ← the step that reaches this app
+```
 
-```
-Gmail Trigger  (subject:"Lead Nova", every minute)
-  └─→ HTTP Request  POST /api/leads/form     ← the step that reaches this app
-        └─→ Gmail: Add Label "CRM ingerido"  ← best-effort receipt in the inbox
-```
+**n8n owns the extraction.** The app used to receive the raw email text and parse it; that was
+dropped in favour of n8n sending named fields, which is simpler on both sides and means a
+change to the email template is an n8n change, not a deploy.
 
 This replaced an **Ottokit** workflow on Meta's *Facebook Lead Ads → New Lead* trigger
-(retired 2026-08; its webhook step could not be made to deliver). Ottokit before that
-replaced a Google Sheet polled by a bound Apps Script (retired 2026-08-04). Both older
-payload shapes are still accepted by the route, so replaying an old payload works.
+(retired 2026-08; its webhook step could not be made to deliver), which itself replaced a
+Google Sheet polled by a bound Apps Script. Both older payload shapes are still accepted, so
+replaying an old payload works.
 
-## n8n → CRM: the contract
+Leads can also arrive by **CSV import** on `/marketing` (a Meta Ads Manager export) — same
+table, same dedupe. See the CSV import feature for that path.
 
-n8n does **no parsing**. It posts four keys and the CRM derives every lead field from `body`:
+## The contract
 
-| Key | Source | Used for |
+POST flat JSON. Every key is a field name; the route matches it against the alias lists in
+`ALIASES` (`src/features/form-leads/mapping.ts`).
+
+```json
+{
+  "id":           "2558111507959750",
+  "full_name":    "Angelica Fernandes",
+  "email":        "angelica_fernandes2@gmail.com",
+  "phone_number": "+5527996464078",
+  "created_time": "2026-08-05T14:23:00-03:00",
+  "message_id":   "1994a1f0c2d3e4f5"
+}
+```
+
+| Key | Column | Notes |
 |---|---|---|
-| `message_id` | Gmail's message id | Dedupe fallback, and kept in `form_leads.raw` |
-| `subject` | The email subject | Kept in `raw` for tracing |
-| `body` | The email's plain text | **Everything** — parsed by `parseLeadEmail` |
-| `received_at` | When Gmail received it | `submitted_at` fallback if the email carries no date |
+| `id` | `external_id` | Meta's lead id. **The dedupe key** — send it if you have it |
+| `full_name` | `name` | |
+| `email` | `email` | Lowercased on the way in |
+| `phone_number` | `phone` | Punctuation stripped → `5527996464078` |
+| `created_time` | `submitted_at` | When the lead filled the form. ISO-8601 or `DD/MM/YYYY HH:MM` |
+| `message_id` | — | Gmail's message id. Kept in `raw`, and the dedupe fallback |
 
-Parsing lives in `src/features/form-leads/email-parse.ts` rather than an n8n Code node so it
-is unit-tested (`email-parse.test.ts`) and so a change to the sending automation's template is
-a test, not an edit in a browser.
+### Names are forgiving
+
+Each column has an alias list, matched on a normalized key — case, accents and punctuation are
+collapsed, so `full_name`, `Full Name`, `Nome completo` and `NOME-COMPLETO` are the same field.
+Both English and pt-BR work:
+
+| Column | Accepted names |
+|---|---|
+| `external_id` | `lead id`, `id do lead`, `leadid`, `id` |
+| `name` | `full name`, `nome completo`, `nome e sobrenome`, `nome`, `name` |
+| `phone` | `phone number`, `telefone celular`, `numero de telefone`, `whatsapp`, `telefone`, `celular`, `phone` |
+| `email` | `email`, `e mail`, `endereco de email` |
+| `campaign` | `campaign name`, `nome da campanha`, `campanha`, `campaign` |
+| `form_name` | `form name`, `nome do formulario`, `formulario`, `form` |
+| `submitted_at` | `created time`, `data de envio`, `data e hora`, `submitted at`, `horario de criacao`, `data` |
+
+Matching is **exact on the normalized name, never a substring** — that's what stops
+`campaign_id` being read as the campaign name, and `form_id` as the form name.
+
+**Anything unrecognized is still kept**, verbatim, in `form_leads.raw`. So you can send extra
+answers (`"Qual seu incômodo?": "rugas"`) with no config change here, and promote them to a
+column later. Nothing is lost by sending too much.
+
+## Setting up the HTTP Request node
 
 ### Credential
 
-A **Header Auth** credential named `CRM - form leads secret`:
+A **Header Auth** credential:
 
 | Field | Value |
 |---|---|
@@ -44,110 +84,57 @@ A **Header Auth** credential named `CRM - form leads secret`:
 
 `FORM_LEADS_SECRET` lives in the Vercel dashboard (project → Settings → Environment
 Variables). Read the existing value rather than generating a new one; rotating it means
-changing it in both places at once. Keeping it in a credential rather than a literal header
-is what keeps it out of the workflow JSON committed to this repo.
+changing it in both places at once. Keeping it in a credential rather than a literal header is
+what keeps it out of any workflow JSON committed to this repo.
 
-Unlike Ottokit — whose header widget appended a newline and broke its own HTTP client — n8n
-sends headers cleanly, so the secret goes in the header. The route still accepts a `secret`
-key in the body for that historical reason; don't use it from here.
+The route also accepts a `secret` key in the body. That exists only because Ottokit's header
+widget appended a newline and broke its own HTTP client; n8n sends headers cleanly, so use the
+header.
 
-### Gmail Trigger
-
-| Setting | Value |
-|---|---|
-| Poll Times | Every Minute |
-| Filters → Search | `subject:"Lead Nova"` |
-| **Simplify** | **off** |
-
-**Simplify off is the part that matters.** With it off the node parses the raw message and
-emits `text` (the plain-text body) alongside `html`, `subject` and `date`. Simplified output
-is a reduced set and may not carry the body at all — and a request with an empty `body` is
-rejected by the route with `400 Nenhum campo recebido`.
-
-Whatever you choose, **confirm against the node's own OUTPUT panel** that the body is under
-`text`. The HTTP body below falls back to `textAsHtml` then `html` if it isn't — the parser
-strips tags — but it never falls back to `snippet`, which Gmail truncates to ~200 characters
-and would silently cost you fields.
-
-### HTTP Request
+### Node settings
 
 | Setting | Value |
 |---|---|
 | Method | `POST` |
 | URL | `https://integrallys-crm.vercel.app/api/leads/form` |
-| Authentication | Generic Credential Type → Header Auth → `CRM - form leads secret` |
+| Authentication | Generic Credential Type → Header Auth |
 | Send Body | on |
 | Specify Body | **Using JSON** |
 | Retry On Fail | on — 3 tries, 5000 ms apart |
+| Never Error | **off** — a failed lead must show as a failed execution |
 
-Body:
+Build the body as **one expression**, not a JSON template with `={{ }}` inside the values:
 
 ```
 ={{ JSON.stringify({
-  message_id:  $json.id,
-  subject:     $json.subject,
-  body:        $json.text || $json.textAsHtml || $json.html,
-  received_at: $json.date
+  id:           $json.leadId,
+  full_name:    $json.nome,
+  email:        $json.email,
+  phone_number: $json.telefone,
+  created_time: $json.data,
+  message_id:   $json.id
 }) }}
 ```
 
-**One expression building the whole object, not a JSON template with `={{ }}` in the values.**
-An email body is multi-line and routinely contains quotes and backslashes; substituted into a
-raw JSON template those characters break the JSON and n8n sends a malformed request.
-`JSON.stringify` escapes them. This is the same pattern the `gestek-*` workflows use.
+Substituted into a raw JSON template, any quote, backslash or newline in a lead's own answer
+breaks the JSON and n8n sends a malformed request. `JSON.stringify` escapes them. Same pattern
+the `gestek-*` workflows use.
 
-### Add Label (optional)
-
-Applies `CRM ingerido` to the message so "did this lead get in?" is answerable from the inbox.
-Set **On Error → Continue** so a labeling failure can't fail an execution whose lead was
-already stored. The workflow JSON ships with a `CRM_INGERIDO_LABEL_ID` placeholder — create
-the label in Gmail and pick it from the dropdown, or delete the node.
-
-## The email format
-
-The parser reads one `Label: value` per line:
-
-```
-Você recebeu uma nova lead!
-
-Nome completo: Ana Souza
-Telefone: +55 (41) 99999-8888
-E-mail: ana@example.com
-Campanha: Harmonização - Julho
-Formulário: Avaliação gratuita
-Lead ID: l_10223344
-Data de envio: 31/07/2026 14:23
-```
-
-- **No per-label configuration to maintain.** Labels are matched against the alias lists in
-  `ALIASES` (`src/features/form-leads/mapping.ts`), the same ones the Meta form questions went
-  through — `Nome completo`, `Telefone`, `E-mail`, `Campanha`, `Formulário`, `Lead ID`,
-  `Data de envio` and their English/underscore variants all map. Add a question to the form
-  and it flows into `raw` with no config change; only a genuinely new *label wording* for a
-  mapped column needs an alias added.
-- **Every recognized line is kept in `raw`**, mapped or not, so an unmapped question is
-  recoverable later.
-- The value may contain colons (`Data: 31/07/2026 14:23:05`) — the split is on the first one.
-- Bulleted lines (`- Nome: Ana`) are read. Lines with no label, and labels over 60 characters,
-  are ignored. A short footer line containing a colon does become an unmapped key in `raw`;
-  that's deliberate, since a tighter rule would drop real form questions.
-- An HTML-only body is stripped to text first, entities included.
+When the workflow is built, export it to `n8n/workflows/` alongside the `gestek-*.json` files —
+placeholder credential ids, no secrets in the file.
 
 ## Deduplication
 
 Server-side, on `form_leads.external_id` (unique index, migration 021), resolved by
 `resolveExternalId`:
 
-1. **Meta's lead id** when the email carries one (any of `Lead ID`, `ID do lead`, `id`).
+1. **Meta's lead id** when the payload carries one.
 2. Otherwise **`gmail:<message_id>`** — Gmail message ids are unique and never reused.
 
-So re-sending an email can never create a second row or a second notification: an n8n retry, a
-manual re-execution, or a re-poll all settle as `duplicate: true`. Using Meta's real lead id
-when it's present is also what let the Ottokit and Gmail paths run in parallel during the
-cutover without duplicating leads.
-
-Rows land with `source = 'gmail_lead_nova'` (Ottokit-era rows kept `meta_instant_form`). The
-column isn't rendered anywhere — it's there so the two eras stay distinguishable in Supabase.
+So re-sending a lead can never create a second row or a second notification: an n8n retry, a
+manual re-execution, or a re-poll all settle as `duplicate: true`. Send at least one of the
+two; with neither, the row has a null `external_id` and Postgres treats NULLs as distinct, so
+that lead is never deduped at all.
 
 ## Responses
 
@@ -156,11 +143,11 @@ column isn't rendered anywhere — it's there so the two eras stay distinguishab
 | `{ "ok": true, "id": "…", "duplicate": false }` | Lead stored, `/marketing` refreshed |
 | `{ "ok": true, "duplicate": true }` | Already ingested — no second row, no notification. A settled success; don't retry |
 | `401` | The header secret doesn't match `FORM_LEADS_SECRET`, or Vercel wasn't redeployed after the var changed |
-| `400 Nenhum campo recebido` | The body arrived empty or had no `Label: value` line. `received` echoes the top-level key *names* (never values) so a misconfigured sender is diagnosable from n8n's own panel |
+| `400 Nenhum campo recebido` | The body had no usable keys. `received` echoes the top-level key *names* (never values) so a misconfigured sender is diagnosable from n8n's own panel |
 | `502` | The DB write failed. The lead was **not** stored — this is what the retries are for |
 
-Because `502` means "not stored" and `duplicate: true` means "already stored", retrying is
-safe in both directions: it cannot drop a lead and it cannot duplicate one.
+Because `502` means "not stored" and `duplicate: true` means "already stored", retrying is safe
+in both directions: it cannot drop a lead and it cannot duplicate one.
 
 ## Notifications
 
@@ -176,27 +163,25 @@ Against a local dev server (`npm run dev`):
 curl -sS -X POST http://localhost:3000/api/leads/form \
   -H "Authorization: Bearer $FORM_LEADS_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"message_id":"test_msg_1","subject":"Lead Nova",
-       "received_at":"2026-08-05T13:00:00Z",
-       "body":"Nome completo: Teste n8n\nTelefone: +55 41 99999-8888\nE-mail: teste@example.com\nLead ID: l_test_1"}'
+  -d '{"id":"l_test_1","full_name":"Teste n8n","email":"teste@example.com",
+       "phone_number":"+55 41 99999-8888","created_time":"2026-08-05T14:23:00-03:00"}'
 ```
 
 First call returns `duplicate: false`, a second returns `duplicate: true`. The lead should
 appear on `/marketing` with the phone normalized to `5541999998888` and a working `wa.me`
 link. Delete the test row from Supabase afterwards.
 
-In n8n, pin a real "Lead Nova" item on the Gmail Trigger and execute the HTTP Request node on
-its own before activating the workflow.
+In n8n, pin a real "Lead Nova" item on the trigger and execute the HTTP Request node on its own
+before activating the workflow.
 
 ## Troubleshooting
 
 | Symptom | Cause |
 |---|---|
-| `400 Nenhum campo recebido` | `body` arrived empty — Simplify is on and the trigger emits no `text`, or the expression points at the wrong key. Check the trigger's OUTPUT panel |
+| `400 Nenhum campo recebido` | Every key resolved empty — re-pick the expressions from the trigger's sample data |
 | `401` | Header credential value isn't exactly `Bearer <secret>`, or Vercel wasn't redeployed after `FORM_LEADS_SECRET` changed |
-| Lead appears, name/phone/e-mail blank | The email's labels don't match any alias. Look at `raw` on the row, then add the label to `ALIASES` in `mapping.ts` |
-| Only the first line of the email parsed | The body came through as `snippet` (~200 chars). Fix the expression to use `text` |
-| Malformed JSON / n8n sends nothing | The body was built as a JSON template with inline `={{ }}` instead of one `JSON.stringify` expression — a quote or newline in the email broke it |
+| Lead appears, name/phone/e-mail blank | The key names don't match any alias. Look at `raw` on the row, then either rename the key in n8n or add the alias to `ALIASES` in `mapping.ts` |
+| Malformed JSON / n8n sends nothing | The body was built as a JSON template with inline `={{ }}` instead of one `JSON.stringify` expression |
+| The same lead lands twice | Neither `id` nor `message_id` was sent, so there was nothing to dedupe on |
 | Nothing triggers | The Gmail search doesn't match. `subject:"Lead Nova"` is exact-phrase; confirm the real subject in Gmail's own search bar first |
-| Up to 1 min between email and lead | The Gmail Trigger polls; that interval is n8n's, not ours |
 | Every lead posted to Slack | `SLACK_WEBHOOK_URL` is set in Vercel — unset it |

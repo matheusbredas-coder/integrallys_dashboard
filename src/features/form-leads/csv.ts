@@ -1,6 +1,6 @@
 // A small, quote-aware CSV parser for the leads-import feature. Hand-rolled rather than a
 // dependency, matching how this codebase already hand-rolls its other parsers (see
-// email-parse.ts). Only what a Meta Ads Manager lead export needs: quoted fields (with
+// mapping.ts). Only what a Meta Ads Manager lead export needs: quoted fields (with
 // embedded commas/newlines and "" as an escaped quote), CRLF or LF line endings, and a
 // tolerant read of blank lines.
 

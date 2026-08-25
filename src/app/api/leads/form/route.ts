@@ -4,7 +4,6 @@ import {
   coerceIngestFields,
   mapSheetFields,
   resolveExternalId,
-  resolveSource,
 } from "@/features/form-leads/mapping";
 import { notifyNewFormLead } from "@/features/form-leads/notify";
 import { enqueueStageEvent } from "@/features/capi/queue";
@@ -15,15 +14,15 @@ export const maxDuration = 30;
 export const dynamic = "force-dynamic";
 
 // Ingest for Meta Ads Instant Form leads. An n8n workflow watches Gmail for the "Lead Nova"
-// notification email and POSTs the message here. Same Bearer-secret shape as /api/cron/* —
-// there's no session on a machine-to-machine request — but its own secret, since it's a
-// different caller. See docs/gmail-form-leads.md for the n8n side.
+// notification email, pulls the lead's fields out of it, and POSTs them here as flat JSON.
+// Same Bearer-secret shape as /api/cron/* — there's no session on a machine-to-machine
+// request — but its own secret, since it's a different caller. See docs/gmail-form-leads.md.
 //
-// Three body shapes are accepted, all resolved by `coerceIngestFields`:
-//   - `{ message_id, subject, body, received_at }` — the live n8n Gmail path; the lead's
-//     fields are parsed out of `body` by `parseLeadEmail`.
-//   - Ottokit's flat payload (ad metadata at the top level, answers nested in `field_data`).
-//     Retired 2026-08, still accepted so a replay of an old payload works.
+// Two body shapes are accepted, both resolved by `coerceIngestFields`:
+//   - a flat `{ label: answer }` object — the live n8n path. Labels are matched against
+//     `ALIASES`, so `full_name` / `Nome completo` / `name` all reach the same column, and
+//     anything unrecognized is still kept in `raw`. Ottokit's retired Facebook Lead Ads
+//     payload is the same shape with answers nested in `field_data`, still unpacked.
 //   - an explicit `{ fields: { label: answer } }` map — what the retired Google Sheet /
 //     Apps Script poller sent, kept so a manual replay or curl test still works.
 
@@ -121,7 +120,7 @@ export async function POST(req: Request) {
     .from("form_leads")
     .upsert(
       {
-        source: resolveSource(body),
+        source: "meta_instant_form",
         external_id: resolveExternalId(lead.external_id, body),
         // Only the retired Sheets poller ever set this; Ottokit leads leave it null.
         sheet_row: typeof body.row === "number" ? body.row : null,
