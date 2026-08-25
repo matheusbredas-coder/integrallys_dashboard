@@ -27,6 +27,15 @@ Apply these in order in the Supabase SQL editor (Dashboard → SQL Editor), or v
 22. `022_form_leads_protocolo.sql` — adds `form_leads.protocolo` (treatment programme), `not null default 'emagrecimento'` so existing rows backfill in place. Shown as a column on `/marketing`.
 23. `023_capi_events.sql` — `capi_events` outbox for Meta Conversions API events fired when a form lead reaches a high-intent stage. **Depends on 021.** The `payload` column holds the already-hashed request body, never plaintext PII. See `docs/meta-capi.md`.
 24. `024_bot_appointment_reminders.sql` — adds `bot_appointment_confirmations.reminder_sent_at`, the idempotency guard for the bot's in-process 9am morning-of reminder job. **Depends on 019.**
+25. `025_bot_bookings.sql` — `bot_bookings` table (form-lead-to-booked-evaluation flow with a R$50 PIX deposit; the CRM's only write is the approve/reject decision), `bot_leads` columns `pending_booking_id`/`form_lead_id`, and the private `bot-comprovantes` storage bucket for receipt images.
+26. `026_bot_leads_script_state.sql` — adds `bot_leads.script_id`/`script_step_id`, the pointer used by
+    the Lead Qualifier Bot's pinned outbound scripts (e.g. the form-lead opening). **Must be applied
+    before deploying** — `bot_leads` update calls carrying these fields fail without it, the same
+    Supabase-does-not-auto-migrate trap every earlier `bot_leads` column addition hit.
+27. `027_bot_leads_promised_followup.sql` — adds `bot_leads.promised_follow_up_at`, the day a lead named
+    herself in the "deixa eu pensar" objection flow (`registrar_retorno_combinado`). **Must be applied
+    before deploying the follow-up sequence scheduler** — same Supabase-does-not-auto-migrate trap as
+    every earlier `bot_leads` column addition.
 
 After applying 001/002, sanity-check:
 ```sql
