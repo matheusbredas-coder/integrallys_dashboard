@@ -1,5 +1,3 @@
-import { getLeadsData } from "@/features/leads/data";
-import { LeadsTable } from "@/features/leads/leads-table";
 import { getFormLeadsData } from "@/features/form-leads/data";
 import { FormLeadsTable } from "@/features/form-leads/form-leads-table";
 import { getCampaignsData } from "@/features/campaigns/data";
@@ -10,8 +8,7 @@ import { getPendingDeposits, getRecentDecidedDeposits } from "@/features/booking
 import { DepositsPanel } from "@/features/bookings/deposits-panel";
 
 export default async function MarketingPage() {
-  const [leads, formLeads, campaigns, waLinks, pendingDeposits, recentDeposits] = await Promise.all([
-    getLeadsData(),
+  const [formLeads, campaigns, waLinks, pendingDeposits, recentDeposits] = await Promise.all([
     getFormLeadsData(),
     getCampaignsData(),
     getWaLinksData(),
@@ -38,9 +35,6 @@ export default async function MarketingPage() {
 
       <h2 style={{ fontSize: 18, fontWeight: 700, margin: "8px 0 0" }}>Leads do formulário (Meta)</h2>
       <FormLeadsTable rows={formLeads} />
-
-      <h2 style={{ fontSize: 18, fontWeight: 700, margin: "8px 0 0" }}>Leads</h2>
-      <LeadsTable rows={leads} />
     </div>
   );
 }
