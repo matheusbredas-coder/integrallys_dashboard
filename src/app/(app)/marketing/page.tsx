@@ -1,5 +1,6 @@
 import { getFormLeadsData } from "@/features/form-leads/data";
 import { FormLeadsTable } from "@/features/form-leads/form-leads-table";
+import { LeadsBoard } from "@/features/form-leads/leads-board";
 import { getCampaignsData } from "@/features/campaigns/data";
 import { CampaignsList } from "@/features/campaigns/campaigns-list";
 import { getWaLinksData } from "@/features/wa-links/data";
@@ -32,6 +33,13 @@ export default async function MarketingPage() {
 
       <h2 style={{ fontSize: 18, fontWeight: 700, margin: "8px 0 0" }}>Campanhas de reativação</h2>
       <CampaignsList rows={campaigns} />
+
+      {/* The caller's own board, above the table she'd otherwise have to scan. It
+          reuses the rows already fetched for the table — no extra query — and writes
+          only its own columns: nothing here moves a lead's funnel stage or reports
+          anything to Meta. See features/form-leads/leads-board.tsx. */}
+      <h2 style={{ fontSize: 18, fontWeight: 700, margin: "8px 0 0" }}>Ligações do dia</h2>
+      <LeadsBoard rows={formLeads} />
 
       <h2 style={{ fontSize: 18, fontWeight: 700, margin: "8px 0 0" }}>Leads do formulário (Meta)</h2>
       <FormLeadsTable rows={formLeads} />

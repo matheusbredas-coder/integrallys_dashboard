@@ -10,7 +10,7 @@ const PAGE = 25;
 
 // Only stages the user actually moves leads to get a colour; `novo` stays neutral so the
 // coloured ones read as "someone has touched this".
-const STAGE_COLORS: Record<FormLeadStage, string> = {
+export const STAGE_COLORS: Record<FormLeadStage, string> = {
   novo: "var(--muted)",
   contatado: "#7aa2f7",
   // Deliberately warmer than `contatado`: the two are one step apart in the funnel but a

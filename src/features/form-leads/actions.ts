@@ -3,7 +3,9 @@
 import { revalidateTag } from "next/cache";
 import { createSupabaseServerClient, createSupabaseServiceClient } from "@/lib/supabase/server";
 import { enqueueStageEvent } from "@/features/capi/queue";
+import { isBoardColumn, type BoardColumn } from "./types";
 import { isFormLeadStage } from "./types";
+import { MAX_CALL_ATTEMPTS, nextCallAfter, normalizeCallbackAt } from "./call-cadence";
 import { classifyCsvLeads, parseCsvLeads, type ClassifiedCsvLeadRow } from "./csv";
 
 // Session guard, same shape as features/campaigns/actions.ts: the service-role client
@@ -59,6 +61,100 @@ export async function updateFormLeadStage(
 
   revalidateTag("form-leads", { expire: 0 });
   return { ok: true };
+}
+
+/**
+ * Move a lead on the caller's kanban board on /marketing.
+ *
+ * This is NOT updateFormLeadStage's sibling, despite sitting next to it. It writes only the
+ * board_column/call_* columns from migration 028 and it deliberately does three things that
+ * function does not:
+ *
+ *   - it NEVER writes `stage`, so the bot's `stage='novo'` outbound gate and the table's
+ *     dropdown are untouched by anything the caller drags;
+ *   - it NEVER calls enqueueStageEvent, so no Meta CAPI conversion event fires. That is what
+ *     makes every move here reversible, and why the board needs no confirm step while the
+ *     dropdown does;
+ *   - it computes the next call date server-side, so a hand-crafted POST cannot schedule a
+ *     callback for 03:00 on a Sunday.
+ *
+ * `column` null puts the lead back in the implicit first column ("A ligar").
+ */
+export async function updateFormLeadBoard(
+  id: string,
+  column: BoardColumn | null,
+  opts?: { registerAttempt?: boolean; callbackAtIso?: string | null }
+): Promise<{ ok: true; attempts: number; nextCallAt: string | null } | { error: string }> {
+  const unauth = await requireUser();
+  if (unauth) return unauth;
+
+  if (!id) return { error: "Lead não informado." };
+  // Server Functions are reachable by direct POST, not just through our own UI, so every
+  // argument is validated here rather than trusted from the board component.
+  if (column !== null && !isBoardColumn(column)) return { error: "Coluna inválida." };
+
+  const now = new Date();
+  const sb = createSupabaseServiceClient();
+
+  const { data: current, error: readError } = await sb
+    .from("form_leads")
+    .select("call_attempts")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (readError) {
+    console.error("[form-leads] board read failed", readError);
+    return { error: "Não foi possível ler o lead." };
+  }
+  if (!current) return { error: "Lead não encontrado." };
+
+  const previousAttempts = Number(current.call_attempts ?? 0);
+  const attempts = opts?.registerAttempt
+    ? Math.min(previousAttempts + 1, MAX_CALL_ATTEMPTS)
+    : previousAttempts;
+
+  let nextCallAt: Date | null = null;
+  if (column === "nao_atendeu") {
+    nextCallAt = nextCallAfter(attempts, now);
+  } else if (column === "retorno") {
+    nextCallAt = normalizeCallbackAt(opts?.callbackAtIso, now);
+    if (!nextCallAt) return { error: "Escolha uma data de retorno válida, em dia útil." };
+  }
+
+  const patch: Record<string, unknown> = {
+    board_column: column,
+    call_attempts: attempts,
+    next_call_at: nextCallAt ? nextCallAt.toISOString() : null,
+  };
+  if (opts?.registerAttempt) patch.last_call_at = now.toISOString();
+
+  // Compare-and-set on the count we just read: the increment must never be computed from
+  // whatever the client happens to be rendering, or two quick clicks both write the same
+  // number. supabase-js cannot express `call_attempts = call_attempts + 1` in an update.
+  const { data, error } = await sb
+    .from("form_leads")
+    .update(patch)
+    .eq("id", id)
+    .eq("call_attempts", previousAttempts)
+    .select("id");
+
+  if (error) {
+    console.error("[form-leads] board update failed", error);
+    return { error: "Não foi possível mover o lead." };
+  }
+  if (!data?.[0]) {
+    // Someone else moved her between our read and our write. Report it rather than
+    // retrying blindly, so the board re-reads instead of clobbering their change.
+    return { error: "O lead mudou em outra aba. Atualize a página." };
+  }
+
+  // NOTE: no enqueueStageEvent here, on purpose. See the doc comment above.
+  revalidateTag("form-leads", { expire: 0 });
+  return {
+    ok: true,
+    attempts,
+    nextCallAt: nextCallAt ? nextCallAt.toISOString() : null,
+  };
 }
 
 /**

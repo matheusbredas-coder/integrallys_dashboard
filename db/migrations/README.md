@@ -36,6 +36,11 @@ Apply these in order in the Supabase SQL editor (Dashboard → SQL Editor), or v
     herself in the "deixa eu pensar" objection flow (`registrar_retorno_combinado`). **Must be applied
     before deploying the follow-up sequence scheduler** — same Supabase-does-not-auto-migrate trap as
     every earlier `bot_leads` column addition.
+28. `028_form_leads_call_tracking.sql` — adds `form_leads.board_column` / `call_attempts` /
+    `last_call_at` / `next_call_at`, the caller's kanban board on `/marketing`. **Must be applied
+    before deploying the board** — the server action writes these columns and fails without them.
+    Deliberately separate from `stage`: the board never touches the funnel and never fires a Meta
+    CAPI event. **Depends on 021.** See `docs/marketing-board.md`.
 
 After applying 001/002, sanity-check:
 ```sql
