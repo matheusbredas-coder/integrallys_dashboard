@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 type BoardOpts = { registerAttempt?: boolean; callbackAtIso?: string | null };
@@ -43,6 +42,29 @@ function cardFor(name: string): HTMLElement {
   return screen.getByText(name).closest("[draggable]") as HTMLElement;
 }
 
+/** A dataTransfer stub; jsdom has none, and user-event does not implement drag. */
+function dataTransfer() {
+  const store: Record<string, string> = {};
+  return {
+    setData: (k: string, v: string) => { store[k] = v; },
+    getData: (k: string) => store[k] ?? "",
+    dropEffect: "",
+    effectAllowed: "",
+  };
+}
+
+/**
+ * Drag a lead's card onto a column. Dragging is the ONLY way to move a card now, so
+ * this is the path every move test goes through.
+ */
+function drag(name: string, toColumn: string) {
+  const transfer = dataTransfer();
+  fireEvent.dragStart(cardFor(name), { dataTransfer: transfer });
+  const target = column(toColumn);
+  fireEvent.dragOver(target, { dataTransfer: transfer });
+  fireEvent.drop(target, { dataTransfer: transfer });
+}
+
 beforeEach(() => {
   updateFormLeadBoard.mockClear();
   updateFormLeadBoard.mockResolvedValue({ ok: true, attempts: 1, nextCallAt: null });
@@ -62,11 +84,10 @@ describe("LeadsBoard", () => {
     expect(within(column("A ligar")).getByText("Lenita")).toBeInTheDocument();
   });
 
-  it("moves a lead through the click fallback, with no confirm step", async () => {
-    const user = userEvent.setup();
+  it("moves a lead on drop, with no confirm step", async () => {
     render(<LeadsBoard rows={[lead()]} />);
 
-    await user.selectOptions(screen.getByLabelText(/Mover Lenita/), "qualificado");
+    drag("Lenita", "Qualificado");
 
     await waitFor(() => expect(updateFormLeadBoard).toHaveBeenCalledTimes(1));
     expect(updateFormLeadBoard).toHaveBeenCalledWith("l1", "qualificado", {
@@ -75,11 +96,10 @@ describe("LeadsBoard", () => {
     });
   });
 
-  it("registers an attempt when a lead is moved into Não atendeu", async () => {
-    const user = userEvent.setup();
+  it("registers an attempt when a lead is dragged into Não atendeu", async () => {
     render(<LeadsBoard rows={[lead()]} />);
 
-    await user.selectOptions(screen.getByLabelText(/Mover Lenita/), "nao_atendeu");
+    drag("Lenita", "Não atendeu");
 
     await waitFor(() => expect(updateFormLeadBoard).toHaveBeenCalledTimes(1));
     expect(updateFormLeadBoard).toHaveBeenCalledWith("l1", "nao_atendeu", {
@@ -89,11 +109,10 @@ describe("LeadsBoard", () => {
   });
 
   it("adds an attempt from the card's own button", async () => {
-    const user = userEvent.setup();
     updateFormLeadBoard.mockResolvedValue({ ok: true, attempts: 2, nextCallAt: null });
     render(<LeadsBoard rows={[lead({ board_column: "nao_atendeu", call_attempts: 1 })]} />);
 
-    await user.click(screen.getByRole("button", { name: "+1 tentativa" }));
+    fireEvent.click(screen.getByRole("button", { name: "+1 tentativa" }));
 
     await waitFor(() => expect(updateFormLeadBoard).toHaveBeenCalledTimes(1));
     expect(updateFormLeadBoard).toHaveBeenCalledWith("l1", "nao_atendeu", {
@@ -109,22 +128,20 @@ describe("LeadsBoard", () => {
   });
 
   it("asks for a date before moving into Retorno marcado, and aborts if cancelled", async () => {
-    const user = userEvent.setup();
     vi.spyOn(window, "prompt").mockReturnValue(null);
     render(<LeadsBoard rows={[lead()]} />);
 
-    await user.selectOptions(screen.getByLabelText(/Mover Lenita/), "retorno");
+    drag("Lenita", "Retorno marcado");
 
     expect(window.prompt).toHaveBeenCalled();
     expect(updateFormLeadBoard).not.toHaveBeenCalled();
   });
 
   it("sends the parsed callback date when one is given", async () => {
-    const user = userEvent.setup();
     vi.spyOn(window, "prompt").mockReturnValue("05/12 14:30");
     render(<LeadsBoard rows={[lead()]} />);
 
-    await user.selectOptions(screen.getByLabelText(/Mover Lenita/), "retorno");
+    drag("Lenita", "Retorno marcado");
 
     await waitFor(() => expect(updateFormLeadBoard).toHaveBeenCalledTimes(1));
     const [, movedTo, opts] = updateFormLeadBoard.mock.calls[0]!;
@@ -133,21 +150,36 @@ describe("LeadsBoard", () => {
   });
 
   it("puts the card back and shows the message when the action fails", async () => {
-    const user = userEvent.setup();
     updateFormLeadBoard.mockResolvedValue({ error: "O lead mudou em outra aba. Atualize a página." });
     render(<LeadsBoard rows={[lead()]} />);
 
-    await user.selectOptions(screen.getByLabelText(/Mover Lenita/), "agendado");
+    drag("Lenita", "Agendado");
 
     await screen.findByText("O lead mudou em outra aba. Atualize a página.");
     // Back in "A ligar", not stranded in the column the move failed into.
     expect(within(column("A ligar")).getByText("Lenita")).toBeInTheDocument();
   });
 
-  it("marks a lead who answered the bot, without moving her column", () => {
-    render(<LeadsBoard rows={[lead({ stage: "respondeu", board_column: "nao_atendeu", call_attempts: 1 })]} />);
-    expect(screen.getByText("Respondeu no WhatsApp")).toBeInTheDocument();
-    expect(within(column("Não atendeu")).getByText("Lenita")).toBeInTheDocument();
+  it("keeps a lead who answered the bot in her own column, sorted first", () => {
+    render(<LeadsBoard rows={[
+      lead({ id: "fria", name: "Fria Silva", board_column: "nao_atendeu", call_attempts: 1 }),
+      lead({ id: "quente", name: "Quente Souza", stage: "respondeu", board_column: "nao_atendeu", call_attempts: 1 }),
+    ]} />);
+    const naoAtendeu = column("Não atendeu");
+    expect(within(naoAtendeu).getByText("Quente Souza")).toBeInTheDocument();
+    // She answered the bot, so she is the first card in the column.
+    const names = within(naoAtendeu).getAllByTitle(/Silva|Souza/).map((n) => n.textContent);
+    expect(names[0]).toBe("Quente Souza");
+  });
+
+  it("shows the phone without the country code", () => {
+    render(<LeadsBoard rows={[lead({ phone: "5527981820451" })]} />);
+    expect(screen.getByText("27 98182-0451")).toBeInTheDocument();
+  });
+
+  it("offers no click-based way to move a card — dragging is the only path", () => {
+    render(<LeadsBoard rows={[lead()]} />);
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
   it("shows the real funnel stage read-only, so board and table can differ visibly", () => {
@@ -156,42 +188,22 @@ describe("LeadsBoard", () => {
   });
 
   describe("drag and drop", () => {
-    /** A dataTransfer stub; jsdom has none, and user-event does not do drag. */
-    function dt() {
-      const store: Record<string, string> = {};
-      return {
-        setData: (k: string, v: string) => { store[k] = v; },
-        getData: (k: string) => store[k] ?? "",
-        dropEffect: "", effectAllowed: "",
-      };
-    }
-
-    it("does nothing when a card is dropped back on its own column", async () => {
-      const { fireEvent } = await import("@testing-library/react");
+    it("does nothing when a card is dropped back on its own column", () => {
       render(<LeadsBoard rows={[lead()]} />);
-      const transfer = dt();
-
-      fireEvent.dragStart(cardFor("Lenita"), { dataTransfer: transfer });
-      fireEvent.dragOver(column("A ligar"), { dataTransfer: transfer });
-      fireEvent.drop(column("A ligar"), { dataTransfer: transfer });
-
+      drag("Lenita", "A ligar");
       expect(updateFormLeadBoard).not.toHaveBeenCalled();
     });
 
-    it("commits a drop onto a different column", async () => {
-      const { fireEvent } = await import("@testing-library/react");
+    it("never fires the drop when dragOver did not preventDefault", () => {
+      // Guards the classic native-DnD bug: without preventDefault on dragOver the
+      // browser refuses the drop entirely and the board goes quietly dead.
       render(<LeadsBoard rows={[lead()]} />);
-      const transfer = dt();
-
+      const target = column("Removido");
+      const transfer = dataTransfer();
       fireEvent.dragStart(cardFor("Lenita"), { dataTransfer: transfer });
-      fireEvent.dragOver(column("Removido"), { dataTransfer: transfer });
-      fireEvent.drop(column("Removido"), { dataTransfer: transfer });
-
-      await waitFor(() => expect(updateFormLeadBoard).toHaveBeenCalledTimes(1));
-      expect(updateFormLeadBoard).toHaveBeenCalledWith("l1", "removido", {
-        registerAttempt: false,
-        callbackAtIso: null,
-      });
+      const over = new Event("dragover", { bubbles: true, cancelable: true });
+      target.dispatchEvent(over);
+      expect(over.defaultPrevented).toBe(true);
     });
   });
 });

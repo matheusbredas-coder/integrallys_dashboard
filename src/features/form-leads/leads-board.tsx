@@ -8,10 +8,20 @@
  * commit instantly with no confirm step, while the dropdown in the table below still
  * needs one: a move on this board is always reversible by dragging back.
  *
- * Drag and drop is native HTML5 rather than a library. The board has no in-column
- * reordering, no scrollable columns and no touch requirement, which is exactly the
- * set of things native DnD is bad at — so the ~10 kB of @dnd-kit buys nothing here.
- * Reach for it the day any of those three changes.
+ * Drag and drop is native HTML5 rather than a library, and — by explicit request —
+ * it is the ONLY way to move a card. There is no click fallback.
+ *
+ * That has a consequence worth knowing before changing anything here: native HTML5
+ * drag does not fire on touch devices at all, so the board is desktop-only. On a
+ * phone or tablet a card cannot be moved by any means. If the board ever has to work
+ * on a tablet, that is the day to bring in @dnd-kit (its pointer sensor handles
+ * touch); the same goes for in-column reordering or columns with their own scrollbar,
+ * the other two things native DnD cannot do.
+ *
+ * It also means jsdom cannot exercise the real thing — jsdom implements no drag, and
+ * user-event does not either — so leads-board.test.tsx drives the handlers with
+ * synthetic drag events and a hand-built dataTransfer. Real dragging is verified in a
+ * browser, not by the suite.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
@@ -19,6 +29,7 @@ import { useRouter } from "next/navigation";
 import { updateFormLeadBoard } from "./actions";
 import { boardColumnFor, groupForBoard } from "./board-columns";
 import { MAX_CALL_ATTEMPTS } from "./call-cadence";
+import { formatPhoneBr } from "@/lib/format";
 import { STAGE_COLORS } from "./form-leads-table";
 import {
   A_LIGAR,
@@ -30,15 +41,36 @@ import {
 } from "./types";
 import { stageLabel } from "./types";
 
-/** Accent per column, reusing the table's stage palette where the meaning lines up. */
+/**
+ * Accent per column, reusing the table's stage palette where the meaning lines up.
+ * Every one is a literal colour rather than a CSS variable, because the cards mix it
+ * into their own background below and color-mix needs a real colour to work with.
+ */
 const COLUMN_ACCENT: Record<BoardColumnKey, string> = {
-  a_ligar: "var(--muted)",
+  a_ligar: "#8c8c95",
   nao_atendeu: "#bf8f6b",
   retorno: "#7aa2f7",
   qualificado: STAGE_COLORS.qualificado,
   agendado: STAGE_COLORS.agendado,
   removido: STAGE_COLORS.perdido,
 };
+
+/**
+ * A card is tinted with its column's colour, so which column a lead is in is legible
+ * from the colour alone — mid-drag included, when the card is out of its column.
+ *
+ * Mixed into `--panel-hi` rather than set flat, so the same percentages work in both
+ * themes: the tint rides on whatever the panel colour currently is, instead of one
+ * hardcoded shade that would go muddy in light mode and washed out in dark. The plain
+ * `background` before it is the fallback for anything without color-mix.
+ */
+function cardTint(accent: string): React.CSSProperties {
+  return {
+    background: "var(--panel-hi)",
+    backgroundImage: `linear-gradient(0deg, color-mix(in srgb, ${accent} 26%, var(--panel-hi)), color-mix(in srgb, ${accent} 26%, var(--panel-hi)))`,
+    border: `1px solid color-mix(in srgb, ${accent} 60%, var(--line))`,
+  };
+}
 
 /** Cards past this fold behind a "ver mais" so a column never needs its own scrollbar. */
 const CARDS_BEFORE_FOLD = 15;
@@ -340,7 +372,6 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
                     depth.current = {};
                     setDropTarget(null);
                   }}
-                  onMove={(to) => commit(row, to, { registerAttempt: to === "nao_atendeu" })}
                   onRegisterAttempt={() => commit(row, "nao_atendeu", { registerAttempt: true })}
                 />
               ))}
@@ -367,17 +398,15 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
 }
 
 function BoardCard({
-  row, now, onDragStart, onDragEnd, onMove, onRegisterAttempt,
+  row, now, onDragStart, onDragEnd, onRegisterAttempt,
 }: {
   row: FormLeadRow;
   now: Date | null;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
-  onMove: (to: BoardColumnKey) => void;
   onRegisterAttempt: () => void;
 }) {
   const column = boardColumnFor(row);
-  const answered = row.stage === "respondeu";
   const due = dueLabel(row.next_call_at, now);
   const spent = row.call_attempts >= MAX_CALL_ATTEMPTS;
 
@@ -389,11 +418,9 @@ function BoardCard({
       // Deliberately NOT the global `.card` class: its hover transform makes the
       // browser snapshot a half-animated element as the drag ghost.
       style={{
+        ...cardTint(COLUMN_ACCENT[column]),
         padding: "9px 11px",
         borderRadius: 12,
-        background: "var(--panel-hi)",
-        border: "1px solid var(--line)",
-        borderLeft: answered ? `3px solid ${STAGE_COLORS.respondeu}` : "1px solid var(--line)",
         fontSize: 12.5,
         cursor: "grab",
         display: "flex",
@@ -407,13 +434,7 @@ function BoardCard({
         {row.name ?? "Sem nome"}
       </div>
 
-      <div className="muted" style={{ fontSize: 11.5 }}>{row.phone ?? "sem telefone"}</div>
-
-      {answered && (
-        <span style={{ fontSize: 11, fontWeight: 700, color: STAGE_COLORS.respondeu }}>
-          Respondeu no WhatsApp
-        </span>
-      )}
+      <div className="muted" style={{ fontSize: 11.5 }}>{formatPhoneBr(row.phone)}</div>
 
       {column === "nao_atendeu" && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -440,51 +461,19 @@ function BoardCard({
 
       {/* The real funnel, read-only. The board and the table can legitimately disagree,
           and the caller needs to see both without being able to confuse one for the
-          other. Skipped when she answered, because the line above already says it and
-          repeating it costs a whole row on an already narrow card. */}
-      {!answered && (
-        <span className="muted" style={{ fontSize: 10.5, opacity: 0.75 }}>
-          etapa: {stageLabel(row.stage)}
-        </span>
-      )}
+          other. */}
+      <span className="muted" style={{ fontSize: 10.5, opacity: 0.75 }}>
+        etapa: {stageLabel(row.stage)}
+      </span>
 
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
-        {column === "nao_atendeu" && !spent && (
-          <button
-            onClick={onRegisterAttempt}
-            style={{ fontSize: 10.5, fontWeight: 600, background: "transparent", border: "1px solid var(--line)", borderRadius: 8, padding: "2px 6px", color: "var(--muted)", cursor: "pointer" }}
-          >
-            +1 tentativa
-          </button>
-        )}
-        {/* Native DnD does not work on touch at all, so every move must also be
-            reachable by click — which means this cannot be hover-only. Styled as quiet
-            text rather than a form control: eleven bordered <select>s make the board
-            read as a form, and the card should read name first. */}
-        <select
-          aria-label={`Mover ${row.name ?? row.id} para outra coluna`}
-          value={column}
-          onChange={(e) => onMove(e.target.value as BoardColumnKey)}
-          title="Mover para outra coluna"
-          style={{
-            fontSize: 10.5,
-            background: "transparent",
-            border: "1px solid transparent",
-            borderRadius: 8,
-            padding: "1px 2px",
-            marginLeft: "auto",
-            color: "var(--muted2)",
-            cursor: "pointer",
-            maxWidth: 116,
-          }}
+      {column === "nao_atendeu" && !spent && (
+        <button
+          onClick={onRegisterAttempt}
+          style={{ fontSize: 10.5, fontWeight: 600, background: "transparent", border: "1px solid var(--line)", borderRadius: 8, padding: "2px 6px", color: "var(--muted)", cursor: "pointer", alignSelf: "flex-start", marginTop: 2 }}
         >
-          {BOARD_COLUMN_KEYS.map((k) => (
-            <option key={k} value={k} style={{ background: "var(--panel-hi)", color: "var(--txt)" }}>
-              {BOARD_COLUMN_LABELS[k]}
-            </option>
-          ))}
-        </select>
-      </div>
+          +1 tentativa
+        </button>
+      )}
     </div>
   );
 }

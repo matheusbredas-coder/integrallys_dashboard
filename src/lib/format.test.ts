@@ -5,6 +5,7 @@ import {
   parseGestekDate,
   formatDate,
   formatDateTimeBrt,
+  formatPhoneBr,
 } from "./format";
 
 describe("formatBRL", () => {
@@ -63,5 +64,35 @@ describe("formatDateTimeBrt", () => {
     expect(formatDateTimeBrt(undefined)).toBe("—");
     expect(formatDateTimeBrt("")).toBe("—");
     expect(formatDateTimeBrt("ontem à tarde")).toBe("—");
+  });
+});
+
+describe("formatPhoneBr", () => {
+  it("drops the country code and formats a 9-digit mobile", () => {
+    expect(formatPhoneBr("5527981820451")).toBe("27 98182-0451");
+    expect(formatPhoneBr("5528999850111")).toBe("28 99985-0111");
+  });
+
+  it("formats an 8-digit landline", () => {
+    expect(formatPhoneBr("552733334444")).toBe("27 3333-4444");
+  });
+
+  it("works on a number already stored without the country code", () => {
+    expect(formatPhoneBr("27981820451")).toBe("27 98182-0451");
+  });
+
+  it("strips punctuation before formatting", () => {
+    expect(formatPhoneBr("+55 (27) 98182-0451")).toBe("27 98182-0451");
+  });
+
+  it("returns anything unrecognizable untouched, rather than mangling it", () => {
+    // Some rows were imported with phone and email swapped; those must look wrong.
+    expect(formatPhoneBr("lenita@exemplo.com")).toBe("lenita@exemplo.com");
+    expect(formatPhoneBr("123")).toBe("123");
+  });
+
+  it("shows a dash when there is no phone at all", () => {
+    expect(formatPhoneBr(null)).toBe("—");
+    expect(formatPhoneBr("")).toBe("—");
   });
 });

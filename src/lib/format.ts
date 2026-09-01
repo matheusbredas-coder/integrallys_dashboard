@@ -59,3 +59,22 @@ export function formatDateTimeBrt(iso: string | null | undefined): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "—" : dateTimeBrt.format(d);
 }
+
+/**
+ * A stored phone as someone in Brazil would read it: "27 98182-0451". Phones are
+ * stored digits-only with the country code (see migration 021), which is what the
+ * bot and Evolution need but is noise on screen.
+ *
+ * Handles both 9-digit mobiles and 8-digit landlines. Anything that doesn't look
+ * like a Brazilian number is returned as-is rather than mangled — a few rows were
+ * imported with the phone and email swapped, and they should look wrong, not tidy.
+ */
+export function formatPhoneBr(phone: string | null | undefined): string {
+  if (!phone) return "—";
+  const digits = phone.replace(/\D/g, "");
+  const local = digits.startsWith("55") ? digits.slice(2) : digits;
+  if (local.length !== 10 && local.length !== 11) return phone;
+  const ddd = local.slice(0, 2);
+  const rest = local.slice(2);
+  return `${ddd} ${rest.slice(0, rest.length - 4)}-${rest.slice(-4)}`;
+}

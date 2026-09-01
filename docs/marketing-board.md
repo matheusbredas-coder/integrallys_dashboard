@@ -37,10 +37,22 @@ agendamento que caiu no Gestek de verdade. São coisas diferentes e podem não b
 
 Para a pessoa não confundir uma com a outra, cada card mostra a etapa real do funil em texto
 pequeno e não editável (`etapa: Contatado`). E quando a lead responde o WhatsApp do bot
-(`stage === 'respondeu'`), o card ganha borda verde-água e sobe para o topo da coluna em que
-estiver — é o sinal mais quente do quadro, e não pode ficar perdido no meio da pilha.
+(`stage === 'respondeu'`), ela sobe para o topo da coluna em que estiver — é o sinal mais
+quente do quadro. Isso é só ordenação: o selo "Respondeu no WhatsApp" que existia no card foi
+removido a pedido, e a borda verde-água que o acompanhava saiu junto porque hoje a borda
+carrega a cor da coluna (veja abaixo).
 
 O `stage` é **lido** para essas duas coisas. Nunca escrito.
+
+## A cor do card é a cor da coluna
+
+Cada card é tingido com a cor da coluna em que está, então dá para saber onde a lead está pela
+cor sozinha — inclusive no meio do arrasto, quando o card está fora de qualquer coluna.
+
+A tinta é misturada com `color-mix` em cima de `--panel-hi` em vez de ser uma cor chapada, para
+a mesma porcentagem funcionar nos dois temas: ela acompanha a cor do painel em vez de ser um
+tom fixo que ficaria lavado no escuro e sujo no claro. Por isso `COLUMN_ACCENT` só tem cores
+literais, nunca variáveis CSS — `color-mix` precisa de uma cor de verdade para trabalhar.
 
 ## Cadência das ligações
 
@@ -64,21 +76,30 @@ A data de "Retorno marcado" é digitada por quem liga, mas **normalizada no serv
 horário útil — a server action é alcançável por POST direto, então não dá para confiar no que
 chega do navegador.
 
-## Drag and drop é nativo, sem biblioteca
+## Drag and drop é nativo, sem biblioteca — e é o único jeito de mover um card
 
 HTML5 puro (`draggable` + `dragstart`/`dragover`/`drop`). O repositório tem 12 dependências e
-nenhuma abstração de UI, e o quadro não precisa de nada do que `@dnd-kit` resolve bem.
+nenhuma abstração de UI.
+
+**Não existe alternativa por clique.** Havia um `<select>` "mover para…" em cada card e ele foi
+removido a pedido, para o quadro ser só arrastar. Isso tem uma consequência que precisa estar
+escrita: **o quadro é só para computador.** O drag nativo do HTML5 não dispara em tela
+sensível ao toque, então em celular ou tablet não há como mover um card — por nenhum caminho.
 
 **Troque por `@dnd-kit/core` no dia em que precisar de qualquer uma destas três**, porque o
 DnD nativo não dá conta delas:
 
-1. reordenar cards dentro de uma coluna;
-2. coluna com scroll próprio — o DnD nativo não faz autoscroll dentro de `overflow-y: auto`,
+1. **usar em tablet ou celular** — hoje é o motivo mais provável, já que não sobrou fallback;
+   o pointer sensor do `@dnd-kit` resolve toque;
+2. reordenar cards dentro de uma coluna;
+3. coluna com scroll próprio — o DnD nativo não faz autoscroll dentro de `overflow-y: auto`,
    e a pessoa fica sem conseguir arrastar um card do fim da lista. É por isso que as colunas
-   crescem e escondem o excedente atrás de "ver mais" em vez de rolar;
-3. suporte a toque — o DnD nativo simplesmente não funciona em tela sensível ao toque. Hoje
-   isso é coberto pelo `<select>` "mover para…" em cada card, que é também o caminho que os
-   testes exercitam (jsdom não tem drag, e `user-event` não implementa arrasto).
+   crescem e escondem o excedente atrás de "ver mais" em vez de rolar.
+
+Como não sobrou caminho por clique, o jsdom não consegue exercitar o arrasto de verdade (ele
+não implementa drag, e o `user-event` também não): os testes disparam eventos de arrasto
+sintéticos com um `dataTransfer` montado à mão. **Arrastar de verdade só se verifica no
+navegador**, e vale fazer isso a cada mudança neste arquivo.
 
 Outras coisas que já estão resolvidas no arquivo e que é fácil quebrar sem querer:
 
