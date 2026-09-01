@@ -1,6 +1,7 @@
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { enqueueStageEvent } from "@/features/capi/queue";
 import { isFormLeadStage } from "@/features/form-leads/types";
+import { isForwardMove } from "@/features/form-leads/stage-order";
 import { revalidateTag } from "next/cache";
 
 export const runtime = "nodejs";
@@ -49,10 +50,37 @@ export async function POST(req: Request) {
   }
 
   const sb = createSupabaseServiceClient();
+
+  const { data: current, error: readError } = await sb
+    .from("form_leads")
+    .select("stage")
+    .eq("id", formLeadId)
+    .maybeSingle();
+
+  if (readError) {
+    console.error("[form-leads] bot stage read failed", readError);
+    return Response.json({ ok: false, error: "Não foi possível ler a etapa." }, { status: 502 });
+  }
+  if (!current) {
+    return Response.json({ ok: false, error: "Lead não encontrado." }, { status: 404 });
+  }
+
+  const currentStage = current.stage as string;
+  if (!isForwardMove(stage, currentStage)) {
+    // Not an error: the bot is reporting something true that simply no longer
+    // advances the lead. Answering ok keeps moveFormLeadStage from logging a
+    // failure and the bot from treating it as something to retry.
+    return Response.json({ ok: true, skipped: true, currentStage });
+  }
+
+  // Compare-and-set on the stage we just read, so a human moving the same lead
+  // from /marketing in the intervening milliseconds wins instead of being
+  // silently overwritten — the read-then-write above is otherwise a race.
   const { data, error } = await sb
     .from("form_leads")
     .update({ stage, updated_at: new Date().toISOString() })
     .eq("id", formLeadId)
+    .eq("stage", currentStage)
     .select("id");
 
   if (error) {
@@ -60,7 +88,9 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, error: "Não foi possível atualizar a etapa." }, { status: 502 });
   }
   if (!data?.[0]) {
-    return Response.json({ ok: false, error: "Lead não encontrado." }, { status: 404 });
+    // Zero rows means the stage changed under us. Whoever wrote it did so later
+    // than our read, so their value stands and no CAPI event fires for ours.
+    return Response.json({ ok: true, skipped: true, currentStage });
   }
 
   // Best-effort, exactly as in updateFormLeadStage: the stage change is already
