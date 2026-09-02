@@ -23,6 +23,14 @@ function fmtCadastro(dataCriacao?: string): string {
   return `${p(brt.getUTCDate())}/${p(brt.getUTCMonth() + 1)}/${p(brt.getUTCFullYear() % 100)} ${p(brt.getUTCHours())}:${p(brt.getUTCMinutes())}`;
 }
 
+// First day of the month `months - 1` months back from `ref`. Built through Date.UTC
+// so a negative month index rolls the year over cleanly, and so day-of-month overflow
+// (Aug 31 minus 6 months) can never skip a month the way setUTCMonth would.
+function rollingStartISO(ref: Date, months: number): string {
+  const d = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth() - (Math.max(1, months) - 1), 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
+
 export async function runGestekSync(opts: { dryRun?: boolean; trigger?: string }, deps?: RunDeps): Promise<SyncResult> {
   const store = deps?.store ?? createSyncStore();
   const gestek = deps?.gestek ?? {
@@ -90,10 +98,7 @@ export async function runGestekSync(opts: { dryRun?: boolean; trigger?: string }
     // Fetch Gestek data before any write, so a fetch error never leaves partial data.
     // Only the recent N months of vendas (historical sales already live in gestek_vendas);
     // keeps us well under the Gestek rate limit. Idempotent upsert merges them in.
-    const months = Math.max(1, Number(process.env.GESTEK_SYNC_MONTHS || 3));
-    const sd = new Date(now());
-    sd.setUTCMonth(sd.getUTCMonth() - (months - 1));
-    const startISO = `${sd.getUTCFullYear()}-${String(sd.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    const startISO = rollingStartISO(now(), Number(process.env.GESTEK_SYNC_MONTHS || 3));
     let vendas: GestekVenda[];
     try {
       vendas = await gestek.fetchAllVendas(startISO);
@@ -102,9 +107,13 @@ export async function runGestekSync(opts: { dryRun?: boolean; trigger?: string }
     }
     const vendaRows = vendas.filter((v) => v.id).map((v) => mapVendaToRow(v, idMap, split.supabaseNameToId));
 
-    // Agenda (Atendimentos). Full history is cheap to keep idempotent via upsert-by-id.
-    // Default start = agenda adoption (~2025-06); override with GESTEK_AGENDA_SYNC_FROM.
-    const agendaStart = process.env.GESTEK_AGENDA_SYNC_FROM || "2025-06-01";
+    // Agenda (Atendimentos). Upsert-by-id, so a rolling window is enough: months already
+    // synced don't change. Re-reading every month since agenda adoption (~2025-06) grew by
+    // one request per calendar month and is what finally pushed a run past Gestek's ~30-request
+    // limit on 2026-09-02 — 24 of the run's ~32 requests were agenda backfill nobody needed.
+    // GESTEK_AGENDA_SYNC_FROM still pins a fixed date when history has to be rebuilt.
+    const agendaStart = process.env.GESTEK_AGENDA_SYNC_FROM
+      || rollingStartISO(now(), Number(process.env.GESTEK_AGENDA_SYNC_MONTHS || 3));
     let agenda: GestekAgenda[];
     try {
       agenda = await gestek.fetchAllAgenda(agendaStart);

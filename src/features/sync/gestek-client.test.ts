@@ -128,3 +128,45 @@ describe("cancelAgenda", () => {
     await expect(cancelAgenda("a1", fetchMock as unknown as typeof fetch)).rejects.toThrow();
   });
 });
+
+// Regression: the 2026-09-02 "Gestek /agenda returned 429" on the dashboard's sync
+// button. Measured live that day: Gestek's public API allows ~30 requests per ~30s,
+// answers the 31st with a bare 429 (no Retry-After), and keeps refusing for a full
+// ~30s afterwards. Two things had to be true for that to reach the user's screen —
+// the bulk readers burst through the budget, and the retry gave up mid-lockout.
+describe("Gestek rate limit", () => {
+  it("paces bulk paging to ~1 req/s instead of bursting", async () => {
+    vi.useFakeTimers();
+    const at: number[] = [];
+    const full = Array.from({ length: 100 }, (_, i) => ({ id: `c${i}`, nome: `N${i}` }));
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      at.push(Date.now());
+      return page("clientes", at.length < 4 ? full : [{ id: "last", nome: "Z" }]);
+    });
+    const promise = fetchAllClientes(fetchMock as unknown as typeof fetch);
+    await vi.runAllTimersAsync();
+    await promise;
+    vi.useRealTimers();
+    expect(at).toHaveLength(4);
+    const gaps = at.slice(1).map((t, i) => t - at[i]);
+    // 30 requests per 30s means anything faster than 1/s eventually trips the limit.
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(1000);
+  });
+
+  it("keeps retrying past Gestek's full ~30s lockout", async () => {
+    vi.useFakeTimers();
+    const t0 = Date.now();
+    const LOCKOUT_MS = 30_000;
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      Date.now() - t0 < LOCKOUT_MS
+        ? new Response("Muitas requisições! Tente novamente mais tarde.", { status: 429 })
+        : page("clientes", [{ id: "c1", nome: "A" }]),
+    );
+    const promise = fetchAllClientes(fetchMock as unknown as typeof fetch);
+    await vi.runAllTimersAsync();
+    const out = await promise;
+    vi.useRealTimers();
+    // The old budget (5 tries, 500ms..8s backoff = 15.5s) surfaced the raw 429 here.
+    expect(out).toHaveLength(1);
+  });
+});

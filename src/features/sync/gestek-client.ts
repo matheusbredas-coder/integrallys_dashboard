@@ -21,15 +21,39 @@ function unwrap<T>(body: unknown, key: string): T[] {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Gestek's rate limit, measured live on 2026-09-02: ~30 requests per ~30s, and the
+// 31st comes back a bare 429 ("Muitas requisicoes!") with no Retry-After. A tripped
+// limit then refuses everything for a FULL ~30s. Both constants below come from that
+// measurement — 32 requests spaced 1.1s apart ran clean, so pacing is what keeps the
+// limit untripped, and the backoff is only the net underneath it.
+const MIN_GAP_MS = 1100;
+
+// Serializes the bulk readers to one request per MIN_GAP_MS. Applied in fetchPaged
+// rather than in fetchWithRetry because the interactive callers (features/agenda's
+// availability grid) make only a couple of calls and must stay fast.
+let lastPacedAt = 0;
+async function pace() {
+  // Clamped both ways: the first call must not wait, and a clock that jumped (fake
+  // timers between tests) must not produce an absurd sleep.
+  const wait = Math.min(MIN_GAP_MS, lastPacedAt + MIN_GAP_MS - Date.now());
+  if (wait > 0) await sleep(wait);
+  lastPacedAt = Date.now();
+}
+
 // Fetch with retry/backoff on 429 (rate limit). Honors Retry-After when present.
 // `init` lets callers set a method other than GET (e.g. DELETE for cancelAgenda);
 // authHeaders() is always merged in so every call stays authenticated.
+//
+// The backoff has to outlast that ~30s lockout or it is worse than useless: the previous
+// budget (5 tries of 500ms..8s = 15.5s total) always gave up halfway through the
+// lockout and surfaced the raw 429 on the dashboard's sync button. These steps
+// (2s, 4s, 8s, 10s, 10s = 34s) clear it.
 export async function fetchWithRetry(url: string, fetchImpl: typeof fetch, init: RequestInit = {}, tries = 5): Promise<Response> {
   for (let i = 0; ; i++) {
     const res = await fetchImpl(url, { ...init, headers: { ...authHeaders(), ...(init.headers ?? {}) } });
     if (res.status !== 429 || i >= tries) return res;
     const ra = Number(res.headers.get("retry-after"));
-    await sleep(Number.isFinite(ra) && ra > 0 ? ra * 1000 : Math.min(8000, 500 * 2 ** i));
+    await sleep(Number.isFinite(ra) && ra > 0 ? ra * 1000 : Math.min(10_000, 2000 * 2 ** i));
   }
 }
 
@@ -38,6 +62,7 @@ async function fetchPaged<T>(path: string, key: string, extraQuery: Record<strin
   // Gestek pagination is 0-indexed: Page=0 is the first page.
   for (let pageN = 0; pageN < MAX_PAGES; pageN++) {
     const qs = new URLSearchParams({ Limit: String(PAGE_SIZE), Page: String(pageN), ...extraQuery });
+    await pace();
     const res = await fetchWithRetry(`${BASE}${path}?${qs.toString()}`, fetchImpl);
     if (!res.ok) throw new Error(`Gestek ${path} returned ${res.status}`);
     const items = unwrap<T>(await res.json(), key);
@@ -73,9 +98,7 @@ export function monthlyWindows(startISO: string, today = new Date()): { start: s
 export async function fetchAllVendas(startISO: string, fetchImpl: typeof fetch = fetch): Promise<GestekVenda[]> {
   const byId = new Map<string, GestekVenda>(); // sales can recur across windows; dedupe by id
   const windows = monthlyWindows(startISO);
-  for (let i = 0; i < windows.length; i++) {
-    const w = windows[i];
-    if (i > 0) await sleep(250); // throttle to stay under the rate limit
+  for (const w of windows) {
     const items = await fetchPaged<GestekVenda>("/vendas", "vendas", { DataInicio: w.start, DataFim: w.end, Status: "1" }, fetchImpl);
     for (const v of items) if (v.id) byId.set(v.id, v);
   }
@@ -88,9 +111,7 @@ export async function fetchAllVendas(startISO: string, fetchImpl: typeof fetch =
 export async function fetchAllAgenda(startISO: string, fetchImpl: typeof fetch = fetch): Promise<GestekAgenda[]> {
   const byId = new Map<string, GestekAgenda>();
   const windows = monthlyWindows(startISO);
-  for (let i = 0; i < windows.length; i++) {
-    const w = windows[i];
-    if (i > 0) await sleep(250); // throttle to stay under the rate limit
+  for (const w of windows) {
     const items = await fetchPaged<GestekAgenda>(
       "/agenda",
       "agendamentos",

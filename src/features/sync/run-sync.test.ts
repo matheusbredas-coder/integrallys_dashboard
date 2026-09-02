@@ -137,4 +137,41 @@ describe("runGestekSync", () => {
     if (!r.ok) expect(r.code).toBe("guard_tripped");
     expect(inserted).toHaveLength(0);
   });
+  // Regression for the 2026-09-02 "Gestek /agenda returned 429": agenda was re-read from
+  // a fixed 2025-06-01 every run, so the request count grew by one per calendar month
+  // until it crossed Gestek's ~30-request limit. It must be a rolling window now.
+  it("reads agenda over a rolling window, not all history since agenda adoption", async () => {
+    delete process.env.GESTEK_AGENDA_SYNC_FROM;
+    delete process.env.GESTEK_AGENDA_SYNC_MONTHS;
+    const { store } = makeStore(existing);
+    const seen: string[] = [];
+    const clientes = existing.map((p) => ({ id: p.gestek_id!, nome: p.Nome }));
+    const api = { ...gestek(clientes, []), fetchAllAgenda: async (s: string) => { seen.push(s); return []; } };
+    const r = await runGestekSync({ dryRun: true }, { store, gestek: api, now: () => new Date("2026-09-02T00:00:00Z") });
+    expect(r.ok).toBe(true);
+    expect(seen).toEqual(["2026-07-01"]); // 3 months back, not 2025-06-01
+  });
+
+  it("still honours GESTEK_AGENDA_SYNC_FROM for a full backfill", async () => {
+    process.env.GESTEK_AGENDA_SYNC_FROM = "2025-06-01";
+    const { store } = makeStore(existing);
+    const seen: string[] = [];
+    const clientes = existing.map((p) => ({ id: p.gestek_id!, nome: p.Nome }));
+    const api = { ...gestek(clientes, []), fetchAllAgenda: async (s: string) => { seen.push(s); return []; } };
+    await runGestekSync({ dryRun: true }, { store, gestek: api, now: () => new Date("2026-09-02T00:00:00Z") });
+    delete process.env.GESTEK_AGENDA_SYNC_FROM;
+    expect(seen).toEqual(["2025-06-01"]);
+  });
+
+  // Year rollover: Date.UTC handles the negative month index; setUTCMonth on a day-31
+  // date would have overflowed into the wrong month.
+  it("rolls the year over when the window crosses January", async () => {
+    delete process.env.GESTEK_AGENDA_SYNC_FROM;
+    const { store } = makeStore(existing);
+    const seen: string[] = [];
+    const clientes = existing.map((p) => ({ id: p.gestek_id!, nome: p.Nome }));
+    const api = { ...gestek(clientes, []), fetchAllAgenda: async (s: string) => { seen.push(s); return []; } };
+    await runGestekSync({ dryRun: true }, { store, gestek: api, now: () => new Date("2026-01-31T00:00:00Z") });
+    expect(seen).toEqual(["2025-11-01"]);
+  });
 });
