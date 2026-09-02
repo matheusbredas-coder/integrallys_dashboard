@@ -1,7 +1,8 @@
 import "server-only";
 import type { GestekCliente, GestekVenda, GestekAgenda } from "./types";
 
-const BASE = "https://apipublica.gestek.com.br/api";
+// Exported: features/agenda reads the availability grid off the same host.
+export const BASE = "https://apipublica.gestek.com.br/api";
 const PAGE_SIZE = 100;
 const MAX_PAGES = 60;
 
@@ -23,7 +24,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Fetch with retry/backoff on 429 (rate limit). Honors Retry-After when present.
 // `init` lets callers set a method other than GET (e.g. DELETE for cancelAgenda);
 // authHeaders() is always merged in so every call stays authenticated.
-async function fetchWithRetry(url: string, fetchImpl: typeof fetch, init: RequestInit = {}, tries = 5): Promise<Response> {
+export async function fetchWithRetry(url: string, fetchImpl: typeof fetch, init: RequestInit = {}, tries = 5): Promise<Response> {
   for (let i = 0; ; i++) {
     const res = await fetchImpl(url, { ...init, headers: { ...authHeaders(), ...(init.headers ?? {}) } });
     if (res.status !== 429 || i >= tries) return res;

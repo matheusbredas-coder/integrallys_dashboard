@@ -7,14 +7,24 @@ import { getWaLinksData } from "@/features/wa-links/data";
 import { WaLinksPanel } from "@/features/wa-links/wa-links-panel";
 import { getPendingDeposits, getRecentDecidedDeposits } from "@/features/bookings/data";
 import { DepositsPanel } from "@/features/bookings/deposits-panel";
+import { getAgendaWeek } from "@/features/agenda/data";
+import { AvailabilityTable } from "@/features/agenda/availability-table";
 
-export default async function MarketingPage() {
-  const [formLeads, campaigns, waLinks, pendingDeposits, recentDeposits] = await Promise.all([
+export default async function MarketingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ semana?: string }>;
+}) {
+  // The week arrows are plain links rather than client state, so which week is on
+  // screen lives in the URL — she can leave it on next week and reload.
+  const { semana } = await searchParams;
+  const [formLeads, campaigns, waLinks, pendingDeposits, recentDeposits, agendaWeek] = await Promise.all([
     getFormLeadsData(),
     getCampaignsData(),
     getWaLinksData(),
     getPendingDeposits(),
     getRecentDecidedDeposits(),
+    getAgendaWeek(Number(semana) || 0),
   ]);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, width: "100%", maxWidth: 1200, marginInline: "auto" }}>
@@ -33,6 +43,11 @@ export default async function MarketingPage() {
 
       <h2 style={{ fontSize: 18, fontWeight: 700, margin: "8px 0 0" }}>Campanhas de reativação</h2>
       <CampaignsList rows={campaigns} />
+
+      {/* Directly above the calling board on purpose: the caller works the two
+          together — pick the lead, read her the times. See features/agenda. */}
+      <h2 style={{ fontSize: 18, fontWeight: 700, margin: "8px 0 0" }}>Horários livres na agenda</h2>
+      <AvailabilityTable week={agendaWeek} />
 
       {/* The caller's own board, above the table she'd otherwise have to scan. It
           reuses the rows already fetched for the table — no extra query — and writes
