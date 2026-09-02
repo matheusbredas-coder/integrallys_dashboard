@@ -23,12 +23,41 @@ conversão para o Meta que não dá para cancelar nem reenviar — `capi_events`
 uma lead arrastada para fora dessa etapa deixaria de receber o WhatsApp de abertura e, com
 ele, toda a sequência de follow-up.
 
-Consequência prática: **arrastar no quadro é sempre reversível**, e por isso o quadro não
-pede confirmação nenhuma — enquanto o dropdown da tabela pede, e deve continuar pedindo.
+Consequência prática: **arrastar no quadro nunca mexe no funil nem no Meta**, e por isso o
+quadro quase não pede confirmação — enquanto o dropdown da tabela pede, e deve continuar
+pedindo. A única exceção é a volta para "A ligar", que zera a lead (veja abaixo).
 
 Os testes que seguram essa regra estão em `src/features/form-leads/actions.test.ts`
 ("never writes the stage column", "never fires a Meta CAPI event, for any column"). Se algum
 dia um deles ficar vermelho, o quadro começou a fazer algo que não é dele.
+
+## Voltar para "A ligar" zera a lead
+
+Arrastar um card de volta para a primeira coluna não é só "mudar de coluna": é dizer *começar
+essa lead do zero*. `updateFormLeadBoard` com `column = null` grava, na mesma escrita:
+
+| campo | vira |
+|---|---|
+| `call_attempts` | `0` |
+| `last_call_at` | `NULL` |
+| `next_call_at` | `NULL` |
+| `notes` | `NULL` |
+
+Ou seja, o card volta a parecer uma lead recém-chegada — sem selo de tentativa, sem data de
+próxima ligação e sem observação.
+
+**Isso é a única coisa irreversível do quadro**: não existe histórico por trás de `notes`, o
+texto apagado não volta. Por isso o quadro pergunta antes, dizendo o que vai perder
+(`lostOnRestart` em `leads-board.tsx` monta a frase, `board-dialog.tsx` mostra) — e só pergunta
+quando há algo a perder: uma lead sem tentativas e sem nota volta direto, sem interrupção.
+
+As duas perguntas do quadro — essa e a data de "Retorno marcado" — saem no modal do próprio
+CRM, centralizado na tela (`board-dialog.tsx`). **Não use `window.confirm` nem `window.prompt`
+aqui**: eles pintam a faixa "localhost:3000 says…" no topo do navegador, que não tem nada a ver
+com o visual do app. Foi por isso que saíram, em 02/09/2026.
+
+Quem move um card por engano para "Removido" e o traz de volta perde a nota do mesmo jeito, e
+isso é aceito: o comportamento pedido foi "voltou para A ligar, recomeça".
 
 ## O quadro e a tabela podem discordar — de propósito
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { refreshAgenda } from "./actions";
-import { BOOKING_RULES, MAX_WEEK_OFFSET } from "./rules";
+import { MAX_WEEK_OFFSET } from "./rules";
 import type { AgendaDay, AgendaWeek, DayOutcome } from "./types";
 import { formatDayMonth, todayLocalISO } from "./time";
 
@@ -27,14 +27,6 @@ const OUTCOME_NOTE: Record<Exclude<DayOutcome, "ok">, string> = {
   full: "Sem encaixe",
   "too-late": "Curto demais",
   error: "Erro no Gestek",
-};
-
-const OUTCOME_HINT: Record<Exclude<DayOutcome, "ok">, string> = {
-  closed: "A clínica não atende neste dia.",
-  past: "Dia já passado.",
-  full: "A agenda do dia não tem horário que encoste em outro atendimento.",
-  "too-late": `Só restam horários dentro das ${BOOKING_RULES.leadTimeMin / 60}h mínimas de antecedência.`,
-  error: "O Gestek não respondeu para este dia. Atualize para tentar de novo.",
 };
 
 const cell: React.CSSProperties = {
@@ -82,7 +74,6 @@ export function AvailabilityTable({ week }: { week: AgendaWeek }) {
   const today = todayLocalISO();
   // Every time offered anywhere in the week, in clock order — the grid's rows.
   const rows = [...new Set(week.days.flatMap((d) => d.slots.map((s) => s.time)))].sort();
-  const total = week.days.reduce((sum, d) => sum + d.slots.length, 0);
   const prev = Math.max(-MAX_WEEK_OFFSET, week.offset - 1);
   const next = Math.min(MAX_WEEK_OFFSET, week.offset + 1);
 
@@ -150,28 +141,6 @@ export function AvailabilityTable({ week }: { week: AgendaWeek }) {
           </tbody>
         </table>
       </div>
-
-      {/* The reason a column is empty matters as much as the times themselves: it is
-          the difference between "ofereço quinta" and "ligo pra clínica". */}
-      {week.days.some((d) => d.outcome !== "ok" && d.outcome !== "closed") && (
-        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4 }}>
-          {week.days
-            .filter((d) => d.outcome !== "ok" && d.outcome !== "closed")
-            .map((d) => (
-              <li key={d.dateISO}>
-                <strong>{WEEKDAY_LABELS[d.weekday]} {formatDayMonth(d.dateISO)}:</strong> {OUTCOME_HINT[d.outcome as Exclude<DayOutcome, "ok">]}
-              </li>
-            ))}
-        </ul>
-      )}
-
-      <p className="muted" style={{ margin: 0, fontSize: 11.5, lineHeight: 1.5 }}>
-        {total} {total === 1 ? "horário livre" : "horários livres"} na semana. São os mesmos horários que o bot
-        oferece no WhatsApp: só aparecem os que ficam colados em outro atendimento (ou abrem o dia), com{" "}
-        {BOOKING_RULES.bufferMin} min de preparo entre um e outro, para não deixar buraco na agenda do
-        profissional. Avaliação de {BOOKING_RULES.durationMin} min, com {BOOKING_RULES.leadTimeMin / 60}h
-        mínimas de antecedência.
-      </p>
     </div>
   );
 }

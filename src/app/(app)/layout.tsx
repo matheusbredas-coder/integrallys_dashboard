@@ -9,6 +9,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="app-shell">
+      {/* Aplica o menu recolhido antes da primeira pintura, para não piscar expandido. */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `try{if(localStorage.getItem("crm.sidebar.collapsed")==="1"){document.documentElement.dataset.sidebar="collapsed"}}catch(e){}`,
+        }}
+      />
       <Sidebar email={user.email ?? "Usuário"} />
       <main className="app-main">{children}</main>
     </div>

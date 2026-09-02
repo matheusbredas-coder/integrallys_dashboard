@@ -24,7 +24,7 @@ vi.mock("./actions", () => ({
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 
-import { LeadsBoard, parseCallback } from "./leads-board";
+import { LeadsBoard } from "./leads-board";
 import type { FormLeadRow } from "./types";
 
 function lead(over: Partial<FormLeadRow> = {}): FormLeadRow {
@@ -69,6 +69,14 @@ function drag(name: string, toColumn: string) {
   const target = column(toColumn);
   fireEvent.dragOver(target, { dataTransfer: transfer });
   fireEvent.drop(target, { dataTransfer: transfer });
+}
+
+/**
+ * The board's own modal, found by its title — `role="dialog"` alone is ambiguous
+ * because the notes drawer is a dialog too.
+ */
+function modal(title: "Começar do zero?" | "Retorno marcado"): HTMLElement {
+  return screen.getByRole("dialog", { name: title });
 }
 
 beforeEach(() => {
@@ -136,25 +144,42 @@ describe("LeadsBoard", () => {
   });
 
   it("asks for a date before moving into Retorno marcado, and aborts if cancelled", async () => {
-    vi.spyOn(window, "prompt").mockReturnValue(null);
     render(<LeadsBoard rows={[lead()]} />);
 
     drag("Lenita", "Retorno marcado");
 
-    expect(window.prompt).toHaveBeenCalled();
+    fireEvent.click(within(modal("Retorno marcado")).getByRole("button", { name: "Cancelar" }));
+
     expect(updateFormLeadBoard).not.toHaveBeenCalled();
+    // Cancelling leaves the card exactly where it was — nothing moved optimistically.
+    expect(within(column("A ligar")).getByText("Lenita")).toBeInTheDocument();
   });
 
-  it("sends the parsed callback date when one is given", async () => {
-    vi.spyOn(window, "prompt").mockReturnValue("05/12 14:30");
+  it("sends the callback date picked in the modal", async () => {
     render(<LeadsBoard rows={[lead()]} />);
 
     drag("Lenita", "Retorno marcado");
+
+    fireEvent.change(screen.getByLabelText("Dia"), { target: { value: "2026-12-05" } });
+    fireEvent.change(screen.getByLabelText("Hora"), { target: { value: "14:30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Marcar retorno" }));
 
     await waitFor(() => expect(updateFormLeadBoard).toHaveBeenCalledTimes(1));
     const [, movedTo, opts] = updateFormLeadBoard.mock.calls[0]!;
     expect(movedTo).toBe("retorno");
-    expect(opts?.callbackAtIso).toMatch(/^\d{4}-12-05T17:30/); // 14:30 BRT = 17:30 UTC
+    expect(opts?.callbackAtIso).toMatch(/^2026-12-05T17:30/); // 14:30 BRT = 17:30 UTC
+  });
+
+  it("closes the modal on Escape without writing anything", async () => {
+    render(<LeadsBoard rows={[lead()]} />);
+
+    drag("Lenita", "Retorno marcado");
+    expect(modal("Retorno marcado")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(updateFormLeadBoard).not.toHaveBeenCalled();
   });
 
   it("puts the card back and shows the message when the action fails", async () => {
@@ -285,6 +310,50 @@ describe("LeadsBoard", () => {
     });
   });
 
+  describe("voltar para A ligar", () => {
+    it("asks before throwing away a call history, and does nothing on cancel", () => {
+      render(<LeadsBoard rows={[lead({ board_column: "nao_atendeu", call_attempts: 2 })]} />);
+      drag("Lenita", "A ligar");
+
+      // The modal names what is about to be lost, so the caller can weigh it.
+      expect(within(modal("Começar do zero?")).getByText(/2 tentativas/)).toBeInTheDocument();
+      fireEvent.click(within(modal("Começar do zero?")).getByRole("button", { name: "Cancelar" }));
+
+      expect(updateFormLeadBoard).not.toHaveBeenCalled();
+      expect(within(column("Não atendeu")).getByText("Lenita")).toBeInTheDocument();
+    });
+
+    it("moves with no question when there is nothing to lose", async () => {
+      render(<LeadsBoard rows={[lead({ board_column: "qualificado" })]} />);
+      drag("Lenita", "A ligar");
+      await waitFor(() => expect(updateFormLeadBoard).toHaveBeenCalledTimes(1));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(updateFormLeadBoard).toHaveBeenCalledWith("l1", null, {
+        registerAttempt: false,
+        callbackAtIso: null,
+      });
+    });
+
+    it("clears the attempt badge and the note on the card right away", async () => {
+      updateFormLeadBoard.mockResolvedValue({ ok: true, attempts: 0, nextCallAt: null });
+      render(
+        <LeadsBoard
+          rows={[lead({ board_column: "nao_atendeu", call_attempts: 2, notes: "atendeu a filha" })]}
+        />,
+      );
+      expect(screen.getByText("2ª")).toBeInTheDocument();
+      // The bullet is the card's "this lead has a note" marker.
+      expect(screen.getByRole("button", { name: /^Notas •/ })).toBeInTheDocument();
+      drag("Lenita", "A ligar");
+      fireEvent.click(screen.getByRole("button", { name: "Sim, começar do zero" }));
+
+      await waitFor(() => expect(updateFormLeadBoard).toHaveBeenCalledTimes(1));
+      expect(within(column("A ligar")).getByText("Lenita")).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByText("2ª")).not.toBeInTheDocument());
+      expect(screen.queryByRole("button", { name: /^Notas •/ })).not.toBeInTheDocument();
+    });
+  });
+
   describe("drag and drop", () => {
     it("does nothing when a card is dropped back on its own column", () => {
       render(<LeadsBoard rows={[lead()]} />);
@@ -303,28 +372,5 @@ describe("LeadsBoard", () => {
       target.dispatchEvent(over);
       expect(over.defaultPrevented).toBe(true);
     });
-  });
-});
-
-describe("parseCallback", () => {
-  const now = new Date("2026-09-01T12:00:00Z");
-
-  it("reads dd/mm and defaults to opening time", () => {
-    expect(parseCallback("05/09", now)).toBe("2026-09-05T12:00:00.000Z"); // 09:00 BRT
-  });
-
-  it("reads dd/mm hh:mm", () => {
-    expect(parseCallback("05/09 14:30", now)).toBe("2026-09-05T17:30:00.000Z");
-  });
-
-  it("rolls to next year when the bare date already passed", () => {
-    expect(parseCallback("01/02", now)).toBe("2027-02-01T12:00:00.000Z");
-  });
-
-  it("refuses what it cannot read", () => {
-    expect(parseCallback("semana que vem", now)).toBeNull();
-    expect(parseCallback("", now)).toBeNull();
-    expect(parseCallback("40/13", now)).toBeNull();
-    expect(parseCallback("05/09 99:99", now)).toBeNull();
   });
 });

@@ -61,7 +61,71 @@ html, body {
 }
 .kpi-card .muted { color: #8c8c95; }
 
+/* ---------- Sidebar recolhível ---------- */
+.sidebar { padding: 30px 20px; }
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 30px;
+}
+.sidebar-brand { min-width: 0; overflow: hidden; white-space: nowrap; }
+.sidebar-toggle {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color .2s ease, border-color .2s ease, background .2s ease;
+}
+.sidebar-toggle:hover {
+  color: var(--txt);
+  border-color: rgba(217,178,76,.38);
+  background: rgba(217,178,76,.07);
+}
+.sidebar-mark { display: none; font-size: 22px; font-weight: 800; line-height: 1; }
+
+.sidebar-user {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px;
+  border-top: 1px solid var(--line);
+}
+
+/* Estado recolhido: só no desktop — no mobile o menu continua sendo o drawer. */
+@media (min-width: 821px) {
+  .app-shell { transition: grid-template-columns .24s ease; }
+  html[data-sidebar="collapsed"] .app-shell { grid-template-columns: 76px 1fr; }
+  html[data-sidebar="collapsed"] .sidebar { padding: 30px 12px; }
+  html[data-sidebar="collapsed"] .sidebar-head { padding: 4px 0 30px; justify-content: center; }
+  html[data-sidebar="collapsed"] .sidebar-brand { display: none; }
+  html[data-sidebar="collapsed"] .sidebar-toggle {
+    margin-left: 0; width: 44px; height: 44px; border-color: transparent;
+  }
+  html[data-sidebar="collapsed"] .sidebar-chevron { display: none; }
+  html[data-sidebar="collapsed"] .sidebar-mark { display: block; }
+  html[data-sidebar="collapsed"] .nav-item { justify-content: center; padding: 14px 0; }
+  html[data-sidebar="collapsed"] .nav-label,
+  html[data-sidebar="collapsed"] .nav-soon,
+  html[data-sidebar="collapsed"] .sidebar-user-info { display: none; }
+  html[data-sidebar="collapsed"] .sidebar-user {
+    flex-direction: column; gap: 10px; padding: 14px 0;
+  }
+}
+
 /* Sidebar nav items */
+.nav-icon { display: flex; flex: none; }
+.nav-label { overflow: hidden; white-space: nowrap; }
 .nav-item {
   display: flex;
   align-items: center;
@@ -417,7 +481,7 @@ html, body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sidebar, .sidebar-scrim { transition: none; }
+  .sidebar, .sidebar-scrim, .app-shell { transition: none; }
   .timeframe-trigger, .timeframe-menu, .timeframe-option { transition: none; animation: none; }
   .skeleton::after { animation: none; }
 }
@@ -430,4 +494,144 @@ html, body {
 @keyframes timeframeMenuOut {
   from { opacity: 1; transform: translateY(0) scale(1); }
   to { opacity: 0; transform: translateY(-4px) scale(.985); }
+}
+
+/* ---------- Quadro de ligações (o kanban de quem liga) ----------
+   Each column passes its own colour down as `--accent`, so the hover, focus and
+   drop-target states are written once here instead of six times inline — and, unlike
+   an inline style, they can actually react to :hover and :focus-visible. */
+.board-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 300px;
+  padding: 15px 11px 11px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel-hi) 60%, var(--bg));
+  border: 1px solid var(--line);
+  transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+/* The accent rail across the top of the column. */
+.board-col::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 16px 16px 0 0;
+  background: var(--accent);
+}
+.board-col[data-target="true"] {
+  background: color-mix(in srgb, var(--accent) 13%, var(--panel-hi));
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.board-col-icon {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 27px;
+  border-radius: 9px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.board-col-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.board-col-count[data-empty="true"] {
+  color: var(--muted2);
+  background: transparent;
+  border-color: var(--line);
+}
+
+/* Deliberately NOT the global `.card`: its hover transform makes the browser snapshot
+   a half-animated element as the drag ghost. Border and shadow only. */
+.board-card {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 10%, var(--panel-hi)) 0%, var(--panel-hi) 72%);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  border-radius: 13px;
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: grab;
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+.board-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .3);
+}
+.board-card:active { cursor: grabbing; }
+
+.board-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: color .16s ease, border-color .16s ease, background .16s ease;
+}
+.board-chip:hover {
+  color: var(--txt);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.board-chip[data-on="true"] { color: var(--gold); border-color: rgba(217, 178, 76, .38); }
+
+.board-empty {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 9px;
+  flex: 1;
+  min-height: 150px;
+  padding: 18px 10px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 13px;
+  color: var(--muted2);
+  text-align: center;
+}
+.board-empty svg { color: color-mix(in srgb, var(--accent) 75%, var(--muted)); }
+
+.board-more {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 7px 8px;
+  cursor: pointer;
+  transition: color .16s ease, border-color .16s ease;
+}
+.board-more:hover { color: var(--txt); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+
+.board-chip:focus-visible,
+.board-more:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-col, .board-card, .board-chip, .board-more { transition: none; }
 }

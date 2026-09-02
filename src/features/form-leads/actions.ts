@@ -78,7 +78,9 @@ export async function updateFormLeadStage(
  *   - it computes the next call date server-side, so a hand-crafted POST cannot schedule a
  *     callback for 03:00 on a Sunday.
  *
- * `column` null puts the lead back in the implicit first column ("A ligar").
+ * `column` null puts the lead back in the implicit first column ("A ligar"), and that move
+ * alone RESETS the lead: attempts back to zero, both call dates cleared, notes wiped. It is
+ * the one irreversible thing the board does — see the comment at the reset below.
  */
 export async function updateFormLeadBoard(
   id: string,
@@ -109,9 +111,16 @@ export async function updateFormLeadBoard(
   if (!current) return { error: "Lead não encontrado." };
 
   const previousAttempts = Number(current.call_attempts ?? 0);
-  const attempts = opts?.registerAttempt
-    ? Math.min(previousAttempts + 1, MAX_CALL_ATTEMPTS)
-    : previousAttempts;
+  // Moving a lead back to "A ligar" is the caller saying "start this one over": the
+  // attempt count, the call dates and the observations all go back to how a brand new
+  // lead looks, so the card carries nothing from the previous round. Deliberately
+  // destructive — there is no history table behind `notes`.
+  const restarting = column === null;
+  const attempts = restarting
+    ? 0
+    : opts?.registerAttempt
+      ? Math.min(previousAttempts + 1, MAX_CALL_ATTEMPTS)
+      : previousAttempts;
 
   let nextCallAt: Date | null = null;
   if (column === "nao_atendeu") {
@@ -126,7 +135,12 @@ export async function updateFormLeadBoard(
     call_attempts: attempts,
     next_call_at: nextCallAt ? nextCallAt.toISOString() : null,
   };
-  if (opts?.registerAttempt) patch.last_call_at = now.toISOString();
+  if (restarting) {
+    patch.last_call_at = null;
+    patch.notes = null;
+  } else if (opts?.registerAttempt) {
+    patch.last_call_at = now.toISOString();
+  }
 
   // Compare-and-set on the count we just read: the increment must never be computed from
   // whatever the client happens to be rendering, or two quick clicks both write the same

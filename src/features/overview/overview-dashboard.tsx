@@ -32,7 +32,26 @@ function LastSyncNote({ lastSync, now }: { lastSync: LastSync | null; now: Date 
   );
 }
 
-export function OverviewDashboard({ source, syncEnabled, firstName }: { source: OverviewSource; syncEnabled: boolean; firstName: string }) {
+function periodGreeting(now: Date) {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", hour: "numeric", hourCycle: "h23" }).format(now)
+  );
+  if (hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+export function OverviewDashboard({
+  source,
+  syncEnabled,
+  firstName,
+  isGabi,
+}: {
+  source: OverviewSource;
+  syncEnabled: boolean;
+  firstName: string;
+  isGabi?: boolean;
+}) {
   const now = useMemo(() => new Date(source.nowIso), [source.nowIso]);
   const [period, setPeriod] = useState<{ range: DateRange; presetKey: Timeframe | null }>(() => ({
     range: rangeForPreset(now, "month"),
@@ -45,8 +64,12 @@ export function OverviewDashboard({ source, syncEnabled, firstName }: { source: 
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div>
-          <h1 style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-.6px" }}>Olá, {firstName}</h1>
-          <p className="muted" style={{ marginTop: 4 }}>Aqui está um resumo da sua clínica.</p>
+          <h1 style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-.6px" }}>
+            {isGabi ? `${periodGreeting(now)}, meu amor.` : `Olá, ${firstName}`}
+          </h1>
+          <p className="muted" style={{ marginTop: 4 }}>
+            {isGabi ? "Até hoje esperando a dancinha..." : "Aqui está um resumo da sua clínica."}
+          </p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, minWidth: 240, marginLeft: "auto" }}>
           <SyncButton enabled={syncEnabled} />

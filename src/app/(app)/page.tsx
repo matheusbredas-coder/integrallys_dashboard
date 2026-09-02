@@ -12,5 +12,6 @@ export default async function OverviewPage() {
     "matheus@oversend.com.br": "Matheus",
   };
   const firstName = nameByEmail[user?.email ?? ""] ?? (user?.email?.split("@")[0] ?? "");
-  return <OverviewDashboard source={d} syncEnabled={process.env.SYNC_ENABLED === "true"} firstName={firstName} />;
+  const isGabi = user?.email === "gabiarena10@gmail.com";
+  return <OverviewDashboard source={d} syncEnabled={process.env.SYNC_ENABLED === "true"} firstName={firstName} isGabi={isGabi} />;
 }

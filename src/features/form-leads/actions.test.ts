@@ -171,6 +171,19 @@ describe("updateFormLeadBoard", () => {
     expect(updatePatches[0]).toHaveProperty("last_call_at");
   });
 
+  it("resets the whole call history when a lead goes back to A ligar", async () => {
+    maybeSingle.mockResolvedValue({ data: { call_attempts: 2 }, error: null });
+    const res = await updateFormLeadBoard("l1", null);
+    expect(res).toEqual({ ok: true, attempts: 0, nextCallAt: null });
+    expect(updatePatches[0]).toEqual({
+      board_column: null,
+      call_attempts: 0,
+      last_call_at: null,
+      next_call_at: null,
+      notes: null,
+    });
+  });
+
   it("stops scheduling once three attempts are spent", async () => {
     maybeSingle.mockResolvedValue({ data: { call_attempts: 2 }, error: null });
     const res = await updateFormLeadBoard("l1", "nao_atendeu", { registerAttempt: true });
