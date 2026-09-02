@@ -39,7 +39,7 @@ import {
   type BoardColumnKey,
   type FormLeadRow,
 } from "./types";
-import { stageLabel } from "./types";
+import { LeadNotesDrawer } from "./lead-notes-drawer";
 
 /**
  * Accent per column, reusing the table's stage palette where the meaning lines up.
@@ -165,6 +165,8 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
    */
   const [pending, setPending] = useState<Record<string, Partial<FormLeadRow>>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  /** Which lead's notes drawer is open, by id — not the row, so it survives a refresh. */
+  const [notesLeadId, setNotesLeadId] = useState<string | null>(null);
 
   // Null during the server render, real time from just after hydration. See useClock.
   const now = useClock();
@@ -202,6 +204,9 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
     [rows, pending],
   );
   const grouped = useMemo(() => groupForBoard(merged, todayIsoUtc()), [merged]);
+  // Resolved from the merged rows, so the drawer shows the note that was just saved
+  // rather than the stale server copy.
+  const notesLead = notesLeadId ? merged.find((r) => r.id === notesLeadId) ?? null : null;
 
   const commit = useCallback(
     (row: FormLeadRow, to: BoardColumnKey, opts?: { registerAttempt?: boolean }) => {
@@ -327,9 +332,12 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
                 if (depth.current[key] === 0) setDropTarget((t) => (t === key ? null : t));
               }}
               // Without preventDefault here the browser never fires onDrop at all.
+              // dataTransfer is optional-chained because it is absent on a synthetic
+              // dragover (jsdom, and anything dispatching a plain Event), and a throw
+              // inside this listener would take the whole drag down.
               onDragOver={(e) => {
                 e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
+                if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
               }}
               onDrop={(e) => {
                 e.preventDefault();
@@ -373,6 +381,7 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
                     setDropTarget(null);
                   }}
                   onRegisterAttempt={() => commit(row, "nao_atendeu", { registerAttempt: true })}
+                  onOpenNotes={() => setNotesLeadId(row.id)}
                 />
               ))}
 
@@ -393,22 +402,37 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
           );
         })}
       </div>
+
+      {notesLead && (
+        <LeadNotesDrawer
+          row={notesLead}
+          onClose={() => setNotesLeadId(null)}
+          onSaved={(notes) => {
+            // Keep the note on screen until the debounced refresh brings the server's
+            // copy back, the same way a board move is settled optimistically.
+            setPending((p) => ({ ...p, [notesLead.id]: { ...p[notesLead.id], notes: notes || null } }));
+            scheduleRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function BoardCard({
-  row, now, onDragStart, onDragEnd, onRegisterAttempt,
+  row, now, onDragStart, onDragEnd, onRegisterAttempt, onOpenNotes,
 }: {
   row: FormLeadRow;
   now: Date | null;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
   onRegisterAttempt: () => void;
+  onOpenNotes: () => void;
 }) {
   const column = boardColumnFor(row);
   const due = dueLabel(row.next_call_at, now);
   const spent = row.call_attempts >= MAX_CALL_ATTEMPTS;
+  const hasNotes = (row.notes ?? "").trim() !== "";
 
   return (
     <div
@@ -459,21 +483,37 @@ function BoardCard({
         </span>
       )}
 
-      {/* The real funnel, read-only. The board and the table can legitimately disagree,
-          and the caller needs to see both without being able to confuse one for the
-          other. */}
-      <span className="muted" style={{ fontSize: 10.5, opacity: 0.75 }}>
-        etapa: {stageLabel(row.stage)}
-      </span>
-
-      {column === "nao_atendeu" && !spent && (
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
+        {/* draggable={false} so grabbing the button doesn't start a card drag; the
+            stopPropagation keeps the click from reaching the card underneath. */}
         <button
-          onClick={onRegisterAttempt}
-          style={{ fontSize: 10.5, fontWeight: 600, background: "transparent", border: "1px solid var(--line)", borderRadius: 8, padding: "2px 6px", color: "var(--muted)", cursor: "pointer", alignSelf: "flex-start", marginTop: 2 }}
+          draggable={false}
+          onClick={(e) => { e.stopPropagation(); onOpenNotes(); }}
+          title={hasNotes ? "Ver e editar as observações" : "Escrever uma observação"}
+          style={{
+            fontSize: 10.5,
+            fontWeight: 600,
+            background: "transparent",
+            border: "1px solid var(--line)",
+            borderRadius: 8,
+            padding: "2px 6px",
+            color: hasNotes ? "var(--gold)" : "var(--muted)",
+            cursor: "pointer",
+          }}
         >
-          +1 tentativa
+          Notas{hasNotes ? " •" : ""}
         </button>
-      )}
+
+        {column === "nao_atendeu" && !spent && (
+          <button
+            draggable={false}
+            onClick={(e) => { e.stopPropagation(); onRegisterAttempt(); }}
+            style={{ fontSize: 10.5, fontWeight: 600, background: "transparent", border: "1px solid var(--line)", borderRadius: 8, padding: "2px 6px", color: "var(--muted)", cursor: "pointer" }}
+          >
+            +1 tentativa
+          </button>
+        )}
+      </div>
     </div>
   );
 }

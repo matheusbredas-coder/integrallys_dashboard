@@ -44,6 +44,24 @@ carrega a cor da coluna (veja abaixo).
 
 O `stage` é **lido** para essas duas coisas. Nunca escrito.
 
+## Notas
+
+Cada card tem um botão "Notas" que abre a ficha da lead numa gaveta: telefone, e-mail, quando
+ela entrou na lista, a etapa no funil (só leitura) e um campo livre de observações. O botão
+aparece em dourado com um ponto (`Notas •`) quando já existe algo escrito, para a pessoa saber
+sem precisar abrir.
+
+O texto vai para `form_leads.notes` — coluna que existe desde a migração 021 e que **nunca foi
+lida nem escrita por nada** até agora (a projeção do bot em `booking/formLeads.ts` também não a
+seleciona), então o quadro pôde assumi-la sem migração nova. `updateFormLeadNotes` segue a
+mesma regra de isolamento do resto do quadro: não escreve `stage`, não dispara CAPI. Campo
+vazio volta a `NULL`, para "tem nota?" continuar sendo uma verificação só.
+
+**A gaveta é renderizada num portal para o `<body>`, e isso não é opcional.** O quadro fica
+dentro de um `.card`, cuja classe global tem `transform` no hover — e qualquer ancestral com
+`transform` vira o bloco de contenção de `position: fixed`. Sem o portal a gaveta é recortada
+pela caixa do quadro: aparece com metade da altura e o botão Salvar cortado no rodapé.
+
 ## A cor do card é a cor da coluna
 
 Cada card é tingido com a cor da coluna em que está, então dá para saber onde a lead está pela

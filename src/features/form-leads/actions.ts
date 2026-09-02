@@ -157,6 +157,53 @@ export async function updateFormLeadBoard(
   };
 }
 
+/** Long enough for a real call history, short enough that nobody pastes a book into it. */
+const MAX_NOTES_LENGTH = 5000;
+
+/**
+ * Save what the caller wrote about a lead, from the notes drawer on the board.
+ *
+ * Writes only `form_leads.notes` — a column that has existed since migration 021 and, until
+ * now, was never read or written by anything (the bot's projection in booking/formLeads.ts
+ * doesn't select it either), so the board can take it over without a migration.
+ *
+ * Same isolation rule as updateFormLeadBoard: no `stage`, no Meta CAPI. See BOARD_COLUMNS.
+ */
+export async function updateFormLeadNotes(
+  id: string,
+  notes: string
+): Promise<{ ok: true; notes: string } | { error: string }> {
+  const unauth = await requireUser();
+  if (unauth) return unauth;
+
+  if (!id) return { error: "Lead não informado." };
+  if (typeof notes !== "string") return { error: "Observação inválida." };
+  if (notes.length > MAX_NOTES_LENGTH) {
+    return { error: `A observação passou de ${MAX_NOTES_LENGTH} caracteres.` };
+  }
+
+  // Empty goes back to NULL rather than "", so "has notes" stays a single check everywhere.
+  const trimmed = notes.trim();
+  const value = trimmed === "" ? null : trimmed;
+
+  const sb = createSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("form_leads")
+    .update({ notes: value })
+    .eq("id", id)
+    .select("id");
+
+  if (error) {
+    console.error("[form-leads] notes update failed", error);
+    return { error: "Não foi possível salvar a observação." };
+  }
+  if (!data?.[0]) return { error: "Lead não encontrado." };
+
+  // NOTE: no enqueueStageEvent here, on purpose — a note is not a funnel move.
+  revalidateTag("form-leads", { expire: 0 });
+  return { ok: true, notes: trimmed };
+}
+
 /**
  * Permanently remove a form lead. Used for junk/duplicate submissions — form leads have no
  * downstream records depending on them (unlike sales), so there's no soft-delete/audit trail.

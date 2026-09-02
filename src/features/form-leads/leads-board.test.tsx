@@ -11,9 +11,15 @@ const updateFormLeadBoard =
   );
 const refresh = vi.fn();
 
+const updateFormLeadNotes =
+  vi.fn<(id: string, notes: string) => Promise<{ ok: true; notes: string } | { error: string }>>(
+    async (_id, notes) => ({ ok: true, notes }),
+  );
+
 vi.mock("./actions", () => ({
   updateFormLeadBoard: (id: string, column: string | null, opts?: BoardOpts) =>
     updateFormLeadBoard(id, column, opts),
+  updateFormLeadNotes: (id: string, notes: string) => updateFormLeadNotes(id, notes),
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
@@ -68,6 +74,8 @@ function drag(name: string, toColumn: string) {
 beforeEach(() => {
   updateFormLeadBoard.mockClear();
   updateFormLeadBoard.mockResolvedValue({ ok: true, attempts: 1, nextCallAt: null });
+  updateFormLeadNotes.mockClear();
+  updateFormLeadNotes.mockImplementation(async (_id, notes) => ({ ok: true, notes }));
   refresh.mockClear();
 });
 
@@ -182,9 +190,99 @@ describe("LeadsBoard", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
-  it("shows the real funnel stage read-only, so board and table can differ visibly", () => {
+  it("keeps the funnel stage off the card and behind Notas", () => {
     render(<LeadsBoard rows={[lead({ stage: "contatado", board_column: "agendado" })]} />);
-    expect(screen.getByText("etapa: Contatado")).toBeInTheDocument();
+    expect(screen.queryByText(/etapa:/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Notas/ })).toBeInTheDocument();
+  });
+
+  describe("notas", () => {
+    it("marks a card that already has something written", () => {
+      render(<LeadsBoard rows={[
+        lead({ id: "com", name: "Com Nota", notes: "não quis falar" }),
+        lead({ id: "sem", name: "Sem Nota" }),
+      ]} />);
+      const buttons = screen.getAllByRole("button", { name: /^Notas/ });
+      const labels = buttons.map((b) => b.textContent);
+      expect(labels).toContain("Notas •");
+      expect(labels).toContain("Notas");
+    });
+
+    it("opens the drawer with who she is and when she arrived", async () => {
+      render(<LeadsBoard rows={[lead({
+        name: "Lenita Alvarez",
+        email: "lenita@exemplo.com",
+        stage: "respondeu",
+        created_at: "2026-08-14T15:30:00Z",
+      })]} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+
+      const drawer = await screen.findByRole("dialog");
+      expect(within(drawer).getByText("Lenita Alvarez")).toBeInTheDocument();
+      expect(within(drawer).getByText("lenita@exemplo.com")).toBeInTheDocument();
+      expect(within(drawer).getByText("27 98182-0451")).toBeInTheDocument();
+      // The funnel stage moved here from the card.
+      expect(within(drawer).getByText("Respondeu")).toBeInTheDocument();
+      expect(within(drawer).getByText(/14\/08\/2026/)).toBeInTheDocument();
+    });
+
+    it("shows what was already written, and saves an edit", async () => {
+      render(<LeadsBoard rows={[lead({ notes: "ligou, pediu para chamar amanhã" })]} />);
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+
+      const field = await screen.findByLabelText("Observações");
+      expect(field).toHaveValue("ligou, pediu para chamar amanhã");
+
+      fireEvent.change(field, { target: { value: "marcou para quinta 14h" } });
+      fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+      await waitFor(() => expect(updateFormLeadNotes).toHaveBeenCalledTimes(1));
+      expect(updateFormLeadNotes).toHaveBeenCalledWith("l1", "marcou para quinta 14h");
+    });
+
+    it("does not offer Salvar until something actually changed", async () => {
+      render(<LeadsBoard rows={[lead({ notes: "já escrito" })]} />);
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+
+      const save = await screen.findByRole("button", { name: "Salvar" });
+      expect(save).toBeDisabled();
+
+      fireEvent.change(screen.getByLabelText("Observações"), { target: { value: "mudou" } });
+      expect(save).toBeEnabled();
+    });
+
+    it("surfaces a save failure instead of pretending it worked", async () => {
+      updateFormLeadNotes.mockResolvedValue({ error: "Não foi possível salvar a observação." });
+      render(<LeadsBoard rows={[lead()]} />);
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+
+      fireEvent.change(await screen.findByLabelText("Observações"), { target: { value: "algo" } });
+      fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+      expect(await screen.findByText("Não foi possível salvar a observação.")).toBeInTheDocument();
+    });
+
+    it("closes on Escape and on the ✕", async () => {
+      render(<LeadsBoard rows={[lead()]} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+      await screen.findByRole("dialog");
+      fireEvent.keyDown(window, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+      await screen.findByRole("dialog");
+      fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    });
+
+    it("opening notes does not move the card", async () => {
+      render(<LeadsBoard rows={[lead()]} />);
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+      await screen.findByRole("dialog");
+      expect(updateFormLeadBoard).not.toHaveBeenCalled();
+    });
   });
 
   describe("drag and drop", () => {

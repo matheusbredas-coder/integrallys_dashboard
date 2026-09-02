@@ -51,7 +51,7 @@ vi.mock("next/cache", () => ({
   revalidateTag: (...args: unknown[]) => revalidateTag(...args),
 }));
 
-import { previewFormLeadsCsv, updateFormLeadBoard } from "./actions";
+import { previewFormLeadsCsv, updateFormLeadBoard, updateFormLeadNotes } from "./actions";
 
 // l:1 appears twice (in-file duplicate), l:2 has no identity fields, l:3 already exists in
 // the DB per `selectIn`'s default mock below.
@@ -216,6 +216,43 @@ describe("updateFormLeadBoard", () => {
   it("reports a lead that is gone", async () => {
     maybeSingle.mockResolvedValue({ data: null, error: null });
     const res = await updateFormLeadBoard("l1", "qualificado");
+    expect(res).toEqual({ error: "Lead não encontrado." });
+  });
+});
+
+describe("updateFormLeadNotes", () => {
+  it("saves what the caller wrote, and nothing else", async () => {
+    const res = await updateFormLeadNotes("l1", "  ligou, pediu para chamar amanhã  ");
+    expect(res).toEqual({ ok: true, notes: "ligou, pediu para chamar amanhã" });
+    expect(updatePatches).toEqual([{ notes: "ligou, pediu para chamar amanhã" }]);
+    // Same isolation rule as the board: a note is not a funnel move.
+    expect(updatePatches[0]).not.toHaveProperty("stage");
+    expect(enqueueStageEvent).not.toHaveBeenCalled();
+    expect(revalidateTag).toHaveBeenCalledWith("form-leads", { expire: 0 });
+  });
+
+  it("clears back to null when the field is emptied", async () => {
+    const res = await updateFormLeadNotes("l1", "   ");
+    expect(res).toEqual({ ok: true, notes: "" });
+    expect(updatePatches).toEqual([{ notes: null }]);
+  });
+
+  it("refuses a note longer than the cap", async () => {
+    const res = await updateFormLeadNotes("l1", "x".repeat(5001));
+    expect(res).toEqual({ error: "A observação passou de 5000 caracteres." });
+    expect(updatePatches).toHaveLength(0);
+  });
+
+  it("rejects when there is no session", async () => {
+    getUser.mockResolvedValue({ data: { user: null } });
+    const res = await updateFormLeadNotes("l1", "algo");
+    expect(res).toEqual({ error: "Sessão expirada. Entre novamente." });
+    expect(updatePatches).toHaveLength(0);
+  });
+
+  it("reports a lead that is gone", async () => {
+    updateSelect.mockResolvedValue({ data: [], error: null });
+    const res = await updateFormLeadNotes("l1", "algo");
     expect(res).toEqual({ error: "Lead não encontrado." });
   });
 });
