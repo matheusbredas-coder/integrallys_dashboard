@@ -25,6 +25,9 @@ export const STAGE_COLORS: Record<FormLeadStage, string> = {
 export function FormLeadsTable({ rows }: { rows: FormLeadRow[] }) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
+  // null = the order the server sent (newest first). Clicking "Nome" cycles A-Z, Z-A, and
+  // back to null, so the third click is how you get the date order back.
+  const [nameSort, setNameSort] = useState<"asc" | "desc" | null>(null);
   // Stage edits applied locally the moment they're made, so the <select> doesn't snap back
   // to the server value while the action and the router refresh are in flight.
   const [pendingStages, setPendingStages] = useState<Record<string, FormLeadStage>>({});
@@ -44,6 +47,19 @@ export function FormLeadsTable({ rows }: { rows: FormLeadRow[] }) {
     );
   }, [rows, q]);
 
+  const sorted = useMemo(() => {
+    if (!nameSort) return filtered;
+    const dir = nameSort === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      const an = (a.name ?? "").trim();
+      const bn = (b.name ?? "").trim();
+      // Leads with no name sink to the bottom in both directions — they're never what
+      // someone is looking for when they sort alphabetically.
+      if (!an || !bn) return an ? -1 : bn ? 1 : 0;
+      return dir * an.localeCompare(bn, "pt-BR", { sensitivity: "base" });
+    });
+  }, [filtered, nameSort]);
+
   const counts = useMemo(() => {
     const acc = {} as Record<string, number>;
     for (const r of rows) {
@@ -53,8 +69,8 @@ export function FormLeadsTable({ rows }: { rows: FormLeadRow[] }) {
     return acc;
   }, [rows, pendingStages]);
 
-  const pageRows = filtered.slice(page * PAGE, page * PAGE + PAGE);
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
+  const pageRows = sorted.slice(page * PAGE, page * PAGE + PAGE);
+  const pages = Math.max(1, Math.ceil(sorted.length / PAGE));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -82,7 +98,25 @@ export function FormLeadsTable({ rows }: { rows: FormLeadRow[] }) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr>
-                {["Nome", "E-mail", "Telefone", "Criado em", "Protocolo", "Adicionado em", "Etapa"].map((label) => (
+                <th
+                  style={{ ...th, padding: 0 }}
+                  aria-sort={nameSort === "asc" ? "ascending" : nameSort === "desc" ? "descending" : "none"}
+                >
+                  <button
+                    onClick={() => {
+                      setNameSort((s) => (s === null ? "asc" : s === "asc" ? "desc" : null));
+                      setPage(0);
+                    }}
+                    title="Ordenar por nome: A-Z, Z-A, depois volta para a data"
+                    style={sortBtn}
+                  >
+                    Nome
+                    <span style={{ fontSize: 9, opacity: nameSort ? 1 : 0.5 }}>
+                      {nameSort === "asc" ? "\u25b2" : nameSort === "desc" ? "\u25bc" : "\u2195"}
+                    </span>
+                  </button>
+                </th>
+                {["E-mail", "Telefone", "Criado em", "Protocolo", "Adicionado em", "Etapa"].map((label) => (
                   <th key={label} style={th}>{label}</th>
                 ))}
               </tr>
@@ -434,5 +468,19 @@ function StageCounts({ counts, total }: { counts: Record<string, number>; total:
 }
 
 const th: React.CSSProperties = { textAlign: "left", padding: "12px 14px", color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", fontSize: 11, letterSpacing: ".4px", whiteSpace: "nowrap", borderBottom: "1px solid var(--line)" };
+// Looks exactly like a plain <th>, but is a real button so it's keyboard-reachable.
+const sortBtn: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  background: "transparent",
+  border: "none",
+  padding: "12px 14px",
+  font: "inherit",
+  color: "inherit",
+  textTransform: "inherit" as React.CSSProperties["textTransform"],
+  letterSpacing: "inherit",
+  cursor: "pointer",
+};
 const td: React.CSSProperties = { padding: "11px 14px", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#cfd2dc" };
 const pgBtn: React.CSSProperties = { background: "transparent", border: "1px solid var(--line)", borderRadius: 10, padding: "7px 14px", fontSize: 12, cursor: "pointer", color: "var(--muted)" };

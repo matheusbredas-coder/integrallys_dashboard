@@ -13,6 +13,7 @@ vi.mock("./actions", () => ({
 }));
 
 import { FormLeadsTable } from "./form-leads-table";
+import type { FormLeadRow } from "./types";
 
 beforeEach(() => {
   previewFormLeadsCsv.mockReset();
@@ -68,4 +69,46 @@ test("a preview error surfaces without offering Confirmar", async () => {
 
   expect(await screen.findByText("Sessão expirada. Entre novamente.")).toBeTruthy();
   expect(screen.queryByText("Confirmar")).toBeNull();
+});
+
+function row(id: string, name: string | null): FormLeadRow {
+  return {
+    id, source: "meta", external_id: null, sheet_row: null, campaign: null, form_name: null,
+    name, phone: null, email: null, raw: {}, protocolo: "emagrecimento", stage: "novo",
+    notes: null, submitted_at: null, created_at: "2026-09-01T12:00:00Z",
+    updated_at: "2026-09-01T12:00:00Z", board_column: null, call_attempts: 0,
+    last_call_at: null, next_call_at: null,
+  };
+}
+
+function namesInOrder() {
+  return Array.from(document.querySelectorAll("tbody tr td:first-child")).map((el) => el.textContent);
+}
+
+test("clicking Nome cycles A-Z, Z-A, then back to the order the server sent", () => {
+  // Server order is by date, newest first — deliberately not alphabetical.
+  render(<FormLeadsTable rows={[row("1", "Carla"), row("2", "ana"), row("3", "Bruno")]} />);
+  expect(namesInOrder()).toEqual(["Carla", "ana", "Bruno"]);
+
+  const header = screen.getByRole("button", { name: /Nome/ });
+
+  fireEvent.click(header);
+  expect(namesInOrder()).toEqual(["ana", "Bruno", "Carla"]);
+
+  fireEvent.click(header);
+  expect(namesInOrder()).toEqual(["Carla", "Bruno", "ana"]);
+
+  fireEvent.click(header);
+  expect(namesInOrder()).toEqual(["Carla", "ana", "Bruno"]);
+});
+
+test("leads with no name stay at the bottom in both directions", () => {
+  render(<FormLeadsTable rows={[row("1", null), row("2", "Bruno"), row("3", "Ana")]} />);
+  const header = screen.getByRole("button", { name: /Nome/ });
+
+  fireEvent.click(header);
+  expect(namesInOrder()).toEqual(["Ana", "Bruno", "—"]);
+
+  fireEvent.click(header);
+  expect(namesInOrder()).toEqual(["Bruno", "Ana", "—"]);
 });
