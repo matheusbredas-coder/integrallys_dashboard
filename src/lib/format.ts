@@ -78,3 +78,19 @@ export function formatPhoneBr(phone: string | null | undefined): string {
   const rest = local.slice(2);
   return `${ddd} ${rest.slice(0, rest.length - 4)}-${rest.slice(-4)}`;
 }
+
+/**
+ * The same stored phone as a `tel:` target, or null when it isn't a dialable
+ * Brazilian number. Tapping one on a phone hands the number to the dialer already
+ * typed in — the caller never copies digits off the board by hand.
+ *
+ * The country code is written back as +55 so the dialer is unambiguous abroad and
+ * on iOS, which treats a bare 11-digit string as a local number.
+ */
+export function telHrefBr(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, "");
+  const local = digits.startsWith("55") ? digits.slice(2) : digits;
+  if (local.length !== 10 && local.length !== 11) return null;
+  return `tel:+55${local}`;
+}

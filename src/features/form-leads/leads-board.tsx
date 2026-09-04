@@ -38,7 +38,7 @@ import { useRouter } from "next/navigation";
 import { updateFormLeadBoard } from "./actions";
 import { boardColumnFor, groupForBoard } from "./board-columns";
 import { MAX_CALL_ATTEMPTS } from "./call-cadence";
-import { formatPhoneBr } from "@/lib/format";
+import { formatPhoneBr, telHrefBr } from "@/lib/format";
 import { STAGE_COLORS } from "./form-leads-table";
 import {
   A_LIGAR,
@@ -450,11 +450,10 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
         </div>
       )}
 
-      {/* All six columns have to fit the page's 1200px without a horizontal scrollbar —
-          a board you have to scroll sideways to see the last column is a board whose
-          last column nobody uses. minmax lets them shrink to fit and scroll only on a
-          genuinely narrow window. */}
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${BOARD_COLUMN_KEYS.length}, minmax(158px, 1fr))`, gap: 12, overflowX: "auto", paddingBottom: 4, alignItems: "stretch" }}>
+      {/* The widths live in globals.css under .board-grid so a media query can widen the
+          columns on a phone — an inline grid-template-columns cannot be overridden by
+          one. The column count is handed down as a custom property. */}
+      <div className="board-grid" style={{ "--board-cols": BOARD_COLUMN_KEYS.length } as React.CSSProperties}>
         {BOARD_COLUMN_KEYS.map((key) => {
           const cards = grouped.get(key) ?? [];
           const isTarget = dropTarget === key;
@@ -590,6 +589,9 @@ function BoardCard({
   const due = dueLabel(row.next_call_at, now);
   const spent = row.call_attempts >= MAX_CALL_ATTEMPTS;
   const hasNotes = (row.notes ?? "").trim() !== "";
+  // null for the handful of rows whose phone is junk — those get no call button
+  // rather than a link that opens the dialer on nothing.
+  const tel = telHrefBr(row.phone);
 
   return (
     <div className="board-card" draggable onDragStart={onDragStart} onDragEnd={onDragEnd}>
@@ -640,24 +642,45 @@ function BoardCard({
         </span>
       )}
 
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
-        {/* draggable={false} so grabbing the button doesn't start a card drag; the
+      <div className="board-card-actions">
+        {/* draggable={false} so grabbing a button doesn't start a card drag; the
             stopPropagation keeps the click from reaching the card underneath. */}
-        <button
-          className="board-chip"
-          data-on={hasNotes ? "true" : "false"}
-          draggable={false}
-          onClick={(e) => { e.stopPropagation(); onOpenNotes(); }}
-          title={hasNotes ? "Ver e editar as observações" : "Escrever uma observação"}
-        >
-          <Icon size={12}>
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="16" y1="13" x2="8" y2="13" />
-            <line x1="16" y1="17" x2="8" y2="17" />
-          </Icon>
-          Notas{hasNotes ? " •" : ""}
-        </button>
+        <div className="board-card-actions-pair">
+          {/* An <a href="tel:"> rather than a button: on a phone it hands the number
+              straight to the dialer already typed in (iOS then asks to confirm), and on
+              a desktop it falls through to whatever app handles calls. */}
+          {tel && (
+            <a
+              className="board-chip"
+              href={tel}
+              draggable={false}
+              onClick={(e) => e.stopPropagation()}
+              title={`Ligar para ${formatPhoneBr(row.phone)}`}
+              style={{ textDecoration: "none" }}
+            >
+              <Icon size={12}>
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.09 4.18 2 2 0 0 1 4.08 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z" />
+              </Icon>
+              <span className="chip-label">Ligar</span>
+            </a>
+          )}
+
+          <button
+            className="board-chip"
+            data-on={hasNotes ? "true" : "false"}
+            draggable={false}
+            onClick={(e) => { e.stopPropagation(); onOpenNotes(); }}
+            title={hasNotes ? "Ver e editar as observações" : "Escrever uma observação"}
+          >
+            <Icon size={12}>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+            </Icon>
+            <span className="chip-label">Notas{hasNotes ? " •" : ""}</span>
+          </button>
+        </div>
 
         {column === "nao_atendeu" && !spent && (
           <button

@@ -6,6 +6,7 @@ import {
   formatDate,
   formatDateTimeBrt,
   formatPhoneBr,
+  telHrefBr,
 } from "./format";
 
 describe("formatBRL", () => {
@@ -94,5 +95,24 @@ describe("formatPhoneBr", () => {
   it("shows a dash when there is no phone at all", () => {
     expect(formatPhoneBr(null)).toBe("—");
     expect(formatPhoneBr("")).toBe("—");
+  });
+});
+
+describe("telHrefBr", () => {
+  it("builds a dialer link with the country code, however the row was stored", () => {
+    expect(telHrefBr("5527981820451")).toBe("tel:+5527981820451");
+    expect(telHrefBr("27981820451")).toBe("tel:+5527981820451");
+    expect(telHrefBr("+55 (27) 98182-0451")).toBe("tel:+5527981820451");
+  });
+
+  it("dials an 8-digit landline too", () => {
+    expect(telHrefBr("552733334444")).toBe("tel:+552733334444");
+  });
+
+  it("gives null for anything that isn't dialable, so no button is shown", () => {
+    expect(telHrefBr("lenita@exemplo.com")).toBeNull();
+    expect(telHrefBr("123")).toBeNull();
+    expect(telHrefBr(null)).toBeNull();
+    expect(telHrefBr("")).toBeNull();
   });
 });
