@@ -120,6 +120,20 @@ describe("buildAgendaDay", () => {
     expect(day.bookedCount).toBe(8);
   });
 
+  it("carries each booking's real extent, so the grid can paint occupancy", async () => {
+    // 12:00 with a 30min + 30min stack occupies a full hour, not half of one.
+    const day = await buildAgendaDay(deps(GRID, [booking(12 * 60, [30, 30])]), BOOKING_RULES, "2026-09-03", now);
+    expect(day.bookings).toEqual([{ startMin: 720, endMin: 780 }]);
+  });
+
+  it("still reports what is booked on a day with nothing to offer", async () => {
+    const solid = Array.from({ length: 8 }, (_, i) => booking(12 * 60 + i * 60, [60]));
+    const day = await buildAgendaDay(deps(GRID, solid), BOOKING_RULES, "2026-09-03", now);
+    expect(day.outcome).toBe("full");
+    expect(day.bookings).toHaveLength(8);
+    expect(day.bookings[0]).toMatchObject({ startMin: 720, endMin: 780 });
+  });
+
   it("degrades one failing Gestek read to an error day instead of throwing", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const broken: AgendaDeps = {

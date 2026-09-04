@@ -7,7 +7,7 @@ import { getWaLinksData } from "@/features/wa-links/data";
 import { WaLinksPanel } from "@/features/wa-links/wa-links-panel";
 import { getPendingDeposits, getRecentDecidedDeposits } from "@/features/bookings/data";
 import { DepositsPanel } from "@/features/bookings/deposits-panel";
-import { getAgendaWeek } from "@/features/agenda/data";
+import { getAgendaWeekWithBlocks } from "@/features/agenda/data";
 import { AvailabilityTable } from "@/features/agenda/availability-table";
 
 export default async function MarketingPage({
@@ -24,7 +24,7 @@ export default async function MarketingPage({
     getWaLinksData(),
     getPendingDeposits(),
     getRecentDecidedDeposits(),
-    getAgendaWeek(Number(semana) || 0),
+    getAgendaWeekWithBlocks(Number(semana) || 0),
   ]);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, width: "100%", maxWidth: 1200, marginInline: "auto" }}>
@@ -46,7 +46,7 @@ export default async function MarketingPage({
 
       {/* Directly above the calling board on purpose: the caller works the two
           together — pick the lead, read her the times. See features/agenda. */}
-      <h2 style={{ fontSize: 18, fontWeight: 700, margin: "8px 0 0" }}>Horários livres na agenda</h2>
+      <h2 style={{ fontSize: 18, fontWeight: 700, margin: "8px 0 0" }}>Agenda da semana</h2>
       <AvailabilityTable week={agendaWeek} />
 
       {/* The caller's own board, above the table she'd otherwise have to scan. It

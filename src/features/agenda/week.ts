@@ -14,7 +14,7 @@
 import type { GestekDayBooking } from "./parse";
 import type { BookingRules } from "./rules";
 import { packSlots, toBusyIntervals } from "./slots";
-import type { AgendaDay } from "./types";
+import type { AgendaBooking, AgendaDay } from "./types";
 import { addDaysISO, localToUtcIso, todayLocalISO, weekdayOfISO } from "./time";
 
 /** The two Gestek reads a day needs, injectable so this is testable offline. */
@@ -51,11 +51,16 @@ export async function buildAgendaDay(
 ): Promise<AgendaDay> {
   const weekday = weekdayOfISO(dateISO);
   const base = { dateISO, weekday };
-  const empty = (outcome: AgendaDay["outcome"], bookedCount: number | null = null): AgendaDay => ({
+  // The clinic's own decisions are attached later, outside the Gestek cache
+  // (data.ts), so a save repaints the grid without buying ten live Gestek reads.
+  const empty = (outcome: AgendaDay["outcome"], bookings: AgendaBooking[] = []): AgendaDay => ({
     ...base,
     outcome,
     slots: [],
-    bookedCount,
+    bookings,
+    blockedStarts: [],
+    openedStarts: [],
+    bookedCount: outcome === "error" || outcome === "past" || outcome === "closed" ? null : bookings.length,
   });
 
   if (dateISO < todayLocalISO(now)) return empty("past");
@@ -72,20 +77,27 @@ export async function buildAgendaDay(
     return empty("error");
   }
 
+  // The grid paints occupancy, so a booking's extent travels with it — the same
+  // busy intervals the packer works from, kept instead of thrown away.
+  const busy = toBusyIntervals(bookings, rules.defaultBookingDurationMin);
+  const occupied: AgendaBooking[] = busy
+    .map((b) => ({ startMin: b.start, endMin: b.end }))
+    .sort((a, b) => a.startMin - b.startMin);
+
   const packed = packSlots({
     freeSlots,
-    bookings: toBusyIntervals(bookings, rules.defaultBookingDurationMin),
+    bookings: busy,
     durationMin: rules.durationMin,
     bufferMin: rules.bufferMin,
     dayOpenMin: rules.dayOpenMin,
     dayCloseMin: rules.dayCloseMin,
     maxGapMin: rules.maxGapMin,
   });
-  if (packed.length === 0) return empty("full", bookings.length);
+  if (packed.length === 0) return empty("full", occupied);
 
   const notBefore = now.getTime() + rules.leadTimeMin * 60_000;
   const bookable = packed.filter((slot) => Date.parse(localToUtcIso(dateISO, slot.startMin)) >= notBefore);
-  if (bookable.length === 0) return empty("too-late", bookings.length);
+  if (bookable.length === 0) return empty("too-late", occupied);
 
   // The packer ranks by how little time a slot strands, which is the right order
   // for picking two to offer over WhatsApp. A table is read down the day, so it is
@@ -94,7 +106,10 @@ export async function buildAgendaDay(
     ...base,
     outcome: "ok",
     slots: [...bookable].sort((a, b) => a.startMin - b.startMin),
+    bookings: occupied,
     bookedCount: bookings.length,
+    blockedStarts: [],
+    openedStarts: [],
   };
 }
 

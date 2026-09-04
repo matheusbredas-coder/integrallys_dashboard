@@ -42,6 +42,16 @@ Apply these in order in the Supabase SQL editor (Dashboard → SQL Editor), or v
     Deliberately separate from `stage`: the board never touches the funnel and never fires a Meta
     CAPI event. **Depends on 021.** See `docs/marketing-board.md`.
 
+29. `029_agenda_manual_blocks.sql` — `agenda_manual_blocks`, the half hours the clinic decides BY HAND
+    from the "Agenda da semana" grid on `/marketing`. `kind` carries the direction: `'block'` closes a
+    free half hour, `'open'` offers one Gestek shows as booked (a cancellation nobody removed). **Must
+    be applied before deploying the editable agenda** — the server action writes this table and fails
+    without it, and the Lead Qualifier Bot reads it to decide what it may offer
+    (`src/booking/blocks.ts`). Both sides degrade to "the clinic decided nothing" if the table is
+    missing, so applying it late is safe but useless. The file is re-runnable: the `kind` column is
+    added with `alter ... if not exists`, so a database that already has the block-only version just
+    gains the column. See `docs/agenda-blocks.md`.
+
 After applying 001/002, sanity-check:
 ```sql
 select count(*) n, sum(receita_total) revenue, sum(numero_vendas) sales from public.clientes_view;
