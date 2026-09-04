@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizePhone, isValidPhone, buildWaMeUrl, trackedLinkUrl, randomSlug } from "./link";
+import { normalizePhone, isValidPhone, buildWaMeUrl, buildBrWaMeUrl, trackedLinkUrl, randomSlug } from "./link";
 
 describe("normalizePhone", () => {
   it("strips punctuation, spaces and symbols", () => {
@@ -56,5 +56,22 @@ describe("randomSlug", () => {
     const bytes = (n: number) => new Uint8Array(Array.from({ length: n }, (_, i) => i));
     // indices 0..7 map to the first 8 chars of the alphabet
     expect(randomSlug(8, bytes)).toBe("01234567");
+  });
+});
+
+describe("buildBrWaMeUrl", () => {
+  it("keeps a number that already carries the country code", () => {
+    expect(buildBrWaMeUrl("5527992256239")).toBe("https://wa.me/5527992256239");
+  });
+  it("puts 55 back on a bare local number", () => {
+    expect(buildBrWaMeUrl("27 99225-6239")).toBe("https://wa.me/5527992256239");
+  });
+  it("handles a landline-length local number", () => {
+    expect(buildBrWaMeUrl("2733334444")).toBe("https://wa.me/552733334444");
+  });
+  it("returns null when there is nothing dialable", () => {
+    expect(buildBrWaMeUrl(null)).toBeNull();
+    expect(buildBrWaMeUrl("")).toBeNull();
+    expect(buildBrWaMeUrl("1234")).toBeNull();
   });
 });

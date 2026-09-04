@@ -46,3 +46,18 @@ function cryptoBytes(n: number): Uint8Array {
   globalThis.crypto.getRandomValues(arr);
   return arr;
 }
+
+/**
+ * WhatsApp link for a Brazilian lead's stored phone.
+ *
+ * Leads arrive from more than one place (Meta lead forms, CSV imports), so some rows
+ * carry the country code and some only the local DDD + number. wa.me needs the country
+ * code, so a bare 10/11-digit local number gets the 55 put back on. Returns null when
+ * the row has nothing dialable, so callers can hide the link instead of opening a
+ * broken chat.
+ */
+export function buildBrWaMeUrl(phone: string | null | undefined, message = ""): string | null {
+  const digits = normalizePhone(phone ?? "");
+  const full = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+  return isValidPhone(full) ? buildWaMeUrl(full, message) : null;
+}
