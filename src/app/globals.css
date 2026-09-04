@@ -672,6 +672,113 @@ html, body {
   outline-offset: 2px;
 }
 
+/* ----- Toque-e-escolhe (mover um card com o dedo) -----
+   Native HTML5 drag never fires on a touch screen, so the phone moves a card by
+   tapping it and then tapping a destination. The component only ever selects a card
+   when matchMedia("(pointer: coarse)") matches, so none of this can appear on a
+   desktop — these rules just have to look right when it does. */
+
+/* The selected card. A ring rather than a background change: the card already tints
+   itself with its column's accent, and a second tint would read as a column change. */
+.board-card[data-selected="true"] {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 55%, transparent);
+}
+.board-card:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* The destination bar, pinned to the bottom edge — the one place a thumb reaches on a
+   390px screen without the hand shifting, and the one place that stays put while the
+   board itself scrolls sideways under it. A sheet would need a scrim and a dismiss of
+   its own; chips inside the card would push the column around and land wherever the
+   card happens to be, which on a tall column is off-screen. */
+.board-move-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 35;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px 12px calc(11px + env(safe-area-inset-bottom, 0px));
+  background: var(--panel-hi);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, .38);
+  animation: board-move-bar-in .16s ease-out;
+}
+@keyframes board-move-bar-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.board-move-bar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.board-move-bar-name {
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-move-bar-name strong { color: var(--txt); font-weight: 600; }
+
+.board-move-cancel {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+/* One row that scrolls sideways rather than a wrapping grid: five destinations at a
+   44px tap height would eat half the screen stacked, and a row keeps the first two —
+   the ones the caller reaches for — under the thumb without any scrolling at all. */
+.board-move-targets {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.board-move-targets::-webkit-scrollbar { display: none; }
+
+.board-move-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 44px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--txt);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  border-radius: 12px;
+  padding: 0 14px;
+  cursor: pointer;
+}
+.board-move-target svg { color: var(--accent); }
+.board-move-target:active { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.board-move-target:focus-visible,
+.board-move-cancel:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .board-col, .board-card, .board-chip, .board-more { transition: none; }
+  .board-move-bar { animation: none; }
 }

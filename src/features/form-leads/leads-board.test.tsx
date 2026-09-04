@@ -43,9 +43,18 @@ function column(label: string): HTMLElement {
   return screen.getByRole("group", { name: label });
 }
 
-/** The card element for a lead, found by the name it renders. */
+/**
+ * The card element for a lead, found by the name it renders. Scoped to .board-card
+ * because the destination bar names the selected lead too, so the name alone is
+ * ambiguous the moment a card is picked.
+ */
 function cardFor(name: string): HTMLElement {
-  return screen.getByText(name).closest("[draggable]") as HTMLElement;
+  const card = screen
+    .getAllByText(name)
+    .map((el) => el.closest(".board-card"))
+    .find(Boolean);
+  if (!card) throw new Error(`Nenhum card para ${name}`);
+  return card as HTMLElement;
 }
 
 /** A dataTransfer stub; jsdom has none, and user-event does not implement drag. */
@@ -72,6 +81,35 @@ function drag(name: string, toColumn: string) {
 }
 
 /**
+ * Turn the board into a phone. `(pointer: coarse)` matching is the ONE thing that
+ * enables tap-to-move, and jsdom implements no matchMedia at all — so this is a stub
+ * installed before render, not a spy, and afterEach takes it back off again.
+ */
+function touchScreen() {
+  window.matchMedia = ((query: string) => ({
+    matches: query.includes("pointer: coarse"),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+
+/** The destination bar that a selected card opens. */
+function moveBar(): HTMLElement {
+  return screen.getByRole("group", { name: "Mover lead para" });
+}
+
+/** Tap a card, then tap a destination — the phone's whole move gesture. */
+function tapMove(name: string, toColumn: string) {
+  fireEvent.click(cardFor(name));
+  fireEvent.click(within(moveBar()).getByRole("button", { name: toColumn }));
+}
+
+/**
  * The board's own modal, found by its title — `role="dialog"` alone is ambiguous
  * because the notes drawer is a dialog too.
  */
@@ -89,6 +127,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  Reflect.deleteProperty(window, "matchMedia");
 });
 
 describe("LeadsBoard", () => {
@@ -210,9 +249,15 @@ describe("LeadsBoard", () => {
     expect(screen.getByText("27 98182-0451")).toBeInTheDocument();
   });
 
-  it("offers no click-based way to move a card — dragging is the only path", () => {
+  it("offers no click-based way to move a card on a mouse — dragging is the only path", () => {
+    // No matchMedia stub here, so the pointer is fine and the board is the desktop one.
     render(<LeadsBoard rows={[lead()]} />);
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+
+    // A mouse click on the card must select nothing: no bar, no move, no dialog.
+    fireEvent.click(cardFor("Lenita"));
+    expect(screen.queryByRole("group", { name: "Mover lead para" })).not.toBeInTheDocument();
+    expect(updateFormLeadBoard).not.toHaveBeenCalled();
   });
 
   it("keeps the funnel stage off the card and behind Notas", () => {
@@ -351,6 +396,163 @@ describe("LeadsBoard", () => {
       expect(within(column("A ligar")).getByText("Lenita")).toBeInTheDocument();
       await waitFor(() => expect(screen.queryByText("2ª")).not.toBeInTheDocument());
       expect(screen.queryByRole("button", { name: /^Notas •/ })).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * The phone's half of the board. jsdom implements no drag, but it implements click
+   * perfectly well — so unlike the drag tests below, these exercise the real gesture
+   * end to end rather than a synthetic stand-in.
+   */
+  describe("toque e escolhe (celular)", () => {
+    beforeEach(() => touchScreen());
+
+    it("um toque seleciona o card e abre os destinos", () => {
+      render(<LeadsBoard rows={[lead()]} />);
+
+      expect(screen.queryByRole("group", { name: "Mover lead para" })).not.toBeInTheDocument();
+      fireEvent.click(cardFor("Lenita"));
+
+      expect(moveBar()).toBeInTheDocument();
+      expect(within(moveBar()).getByText("Lenita")).toBeInTheDocument();
+      expect(cardFor("Lenita")).toHaveAttribute("data-selected", "true");
+    });
+
+    it("não oferece a coluna em que a lead já está", () => {
+      render(<LeadsBoard rows={[lead({ board_column: "nao_atendeu", call_attempts: 1 })]} />);
+      fireEvent.click(cardFor("Lenita"));
+
+      const bar = moveBar();
+      // Moving onto her own column writes nothing, so it would be a dead button.
+      expect(within(bar).queryByRole("button", { name: "Não atendeu" })).not.toBeInTheDocument();
+      for (const label of ["A ligar", "Retorno marcado", "Qualificado", "Agendado", "Removido"]) {
+        expect(within(bar).getByRole("button", { name: label })).toBeInTheDocument();
+      }
+    });
+
+    it("um toque no destino move a lead", async () => {
+      render(<LeadsBoard rows={[lead()]} />);
+
+      tapMove("Lenita", "Qualificado");
+
+      await waitFor(() => expect(updateFormLeadBoard).toHaveBeenCalledTimes(1));
+      expect(updateFormLeadBoard).toHaveBeenCalledWith("l1", "qualificado", {
+        registerAttempt: false,
+        callbackAtIso: null,
+      });
+      // The bar closes with the move: the card is where it was going.
+      expect(screen.queryByRole("group", { name: "Mover lead para" })).not.toBeInTheDocument();
+      expect(within(column("Qualificado")).getByText("Lenita")).toBeInTheDocument();
+    });
+
+    it("herda o +1 tentativa de Não atendeu, como o arrastar", async () => {
+      render(<LeadsBoard rows={[lead()]} />);
+
+      tapMove("Lenita", "Não atendeu");
+
+      await waitFor(() => expect(updateFormLeadBoard).toHaveBeenCalledTimes(1));
+      expect(updateFormLeadBoard).toHaveBeenCalledWith("l1", "nao_atendeu", {
+        registerAttempt: true,
+        callbackAtIso: null,
+      });
+    });
+
+    it("herda o modal de Retorno marcado, e cancelar não escreve nada", () => {
+      render(<LeadsBoard rows={[lead()]} />);
+
+      tapMove("Lenita", "Retorno marcado");
+
+      fireEvent.click(within(modal("Retorno marcado")).getByRole("button", { name: "Cancelar" }));
+      expect(updateFormLeadBoard).not.toHaveBeenCalled();
+      expect(within(column("A ligar")).getByText("Lenita")).toBeInTheDocument();
+    });
+
+    it("herda o aviso de começar do zero", () => {
+      render(<LeadsBoard rows={[lead({ board_column: "nao_atendeu", call_attempts: 2 })]} />);
+
+      tapMove("Lenita", "A ligar");
+
+      expect(within(modal("Começar do zero?")).getByText(/2 tentativas/)).toBeInTheDocument();
+      expect(updateFormLeadBoard).not.toHaveBeenCalled();
+    });
+
+    it("um toque fora cancela sem escrever nada", () => {
+      render(<LeadsBoard rows={[lead()]} />);
+      fireEvent.click(cardFor("Lenita"));
+      expect(moveBar()).toBeInTheDocument();
+
+      fireEvent.click(document.body);
+
+      expect(screen.queryByRole("group", { name: "Mover lead para" })).not.toBeInTheDocument();
+      expect(updateFormLeadBoard).not.toHaveBeenCalled();
+      expect(within(column("A ligar")).getByText("Lenita")).toBeInTheDocument();
+    });
+
+    it("um toque no próprio card de novo cancela", () => {
+      render(<LeadsBoard rows={[lead()]} />);
+      fireEvent.click(cardFor("Lenita"));
+      fireEvent.click(cardFor("Lenita"));
+
+      expect(screen.queryByRole("group", { name: "Mover lead para" })).not.toBeInTheDocument();
+      expect(updateFormLeadBoard).not.toHaveBeenCalled();
+    });
+
+    it("Esc cancela, e o botão Cancelar também", () => {
+      render(<LeadsBoard rows={[lead()]} />);
+
+      fireEvent.click(cardFor("Lenita"));
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.queryByRole("group", { name: "Mover lead para" })).not.toBeInTheDocument();
+
+      fireEvent.click(cardFor("Lenita"));
+      fireEvent.click(within(moveBar()).getByRole("button", { name: "Cancelar" }));
+      expect(screen.queryByRole("group", { name: "Mover lead para" })).not.toBeInTheDocument();
+
+      expect(updateFormLeadBoard).not.toHaveBeenCalled();
+    });
+
+    it("tocar num outro card passa a seleção em vez de cancelar", () => {
+      render(<LeadsBoard rows={[
+        lead({ id: "a", name: "Lenita" }),
+        lead({ id: "b", name: "Marcia" }),
+      ]} />);
+
+      fireEvent.click(cardFor("Lenita"));
+      fireEvent.click(cardFor("Marcia"));
+
+      expect(within(moveBar()).getByText("Marcia")).toBeInTheDocument();
+      expect(cardFor("Lenita")).toHaveAttribute("data-selected", "false");
+      expect(cardFor("Marcia")).toHaveAttribute("data-selected", "true");
+    });
+
+    it("os chips do card não selecionam o card debaixo deles", async () => {
+      render(<LeadsBoard rows={[lead({ board_column: "nao_atendeu", call_attempts: 1 })]} />);
+
+      // Notas opens the drawer and nothing else.
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+      await screen.findByRole("dialog");
+      expect(screen.queryByRole("group", { name: "Mover lead para" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
+
+      // "+1 tentativa" writes its own move, without ever opening the bar.
+      fireEvent.click(screen.getByRole("button", { name: "+1 tentativa" }));
+      expect(screen.queryByRole("group", { name: "Mover lead para" })).not.toBeInTheDocument();
+
+      // And so does the dialer link.
+      fireEvent.click(screen.getByTitle("Ligar para 27 98182-0451"));
+      expect(screen.queryByRole("group", { name: "Mover lead para" })).not.toBeInTheDocument();
+    });
+
+    it("arrastar continua funcionando lado a lado com o toque", async () => {
+      render(<LeadsBoard rows={[lead()]} />);
+
+      drag("Lenita", "Agendado");
+
+      await waitFor(() => expect(updateFormLeadBoard).toHaveBeenCalledTimes(1));
+      expect(updateFormLeadBoard).toHaveBeenCalledWith("l1", "agendado", {
+        registerAttempt: false,
+        callbackAtIso: null,
+      });
     });
   });
 

@@ -12,20 +12,36 @@
  * "Retorno marcado" (it cannot be written without a date). Both ask through the app's
  * own centred modal, board-dialog.tsx, never through window.confirm/window.prompt.
  *
- * Drag and drop is native HTML5 rather than a library, and — by explicit request —
- * it is the ONLY way to move a card. There is no click fallback.
+ * There are two ways to move a card, and which one you get depends on the pointer:
  *
- * That has a consequence worth knowing before changing anything here: native HTML5
- * drag does not fire on touch devices at all, so the board is desktop-only. On a
- * phone or tablet a card cannot be moved by any means. If the board ever has to work
- * on a tablet, that is the day to bring in @dnd-kit (its pointer sensor handles
- * touch); the same goes for in-column reordering or columns with their own scrollbar,
- * the other two things native DnD cannot do.
+ *   ON A MOUSE — native HTML5 drag and drop, no library. By explicit request this is
+ *   still the ONLY way to move a card on a desktop: there is no click fallback, no
+ *   dropdown, no context menu. Do not add one.
  *
- * It also means jsdom cannot exercise the real thing — jsdom implements no drag, and
- * user-event does not either — so leads-board.test.tsx drives the handlers with
- * synthetic drag events and a hand-built dataTransfer. Real dragging is verified in a
- * browser, not by the suite.
+ *   ON A TOUCH SCREEN — tap-and-choose, because native HTML5 drag does not fire on
+ *   touch at all and the board was unusable on a phone. One tap selects the card, a
+ *   bar of the other five columns rises from the bottom of the screen, and a tap on
+ *   one of them moves the lead. Tapping outside, tapping the same card again or Esc
+ *   cancels without writing anything. Authorised by Matheus on 2026-09-03; the
+ *   "dragging only" rule above was always about the desktop, and only that.
+ *
+ * The two never overlap: the tap mode is gated on matchMedia("(pointer: coarse)"), so
+ * a mouse click on a card selects nothing and the desktop board behaves exactly as it
+ * did before. A laptop with a touchscreen reports a fine primary pointer and keeps the
+ * drag-only board, which is the intended reading.
+ *
+ * Every move — dragged or tapped — goes through `commit`. That is the single gate that
+ * owns the two confirm dialogs, the optimistic update, the automatic +1 tentativa and
+ * the revert when the server says no. Never write around it.
+ *
+ * If in-column reordering or columns with their own scrollbar are ever wanted, that is
+ * the day to bring in @dnd-kit — the two things native DnD cannot do. Moving a card on
+ * a phone is no longer on that list.
+ *
+ * jsdom cannot exercise the drag half — it implements no drag, and user-event does not
+ * either — so leads-board.test.tsx drives those handlers with synthetic drag events and
+ * a hand-built dataTransfer, and real dragging is verified in a browser. The tap half
+ * is plain clicks, so the suite covers it for real.
  *
  * The look lives in globals.css under "Quadro de ligações", not in inline styles: the
  * column, the card and the chips all need :hover and :focus-visible states, and an
@@ -188,6 +204,46 @@ function useClock(): Date | null {
 }
 
 /**
+ * Whether the primary pointer is a finger. Drives the tap-to-move mode and nothing
+ * else — the drag handlers stay wired up either way.
+ *
+ * `(pointer: coarse)` asks about the PRIMARY pointer on purpose: a laptop with a
+ * touchscreen still has a mouse, and turning card clicks into a selection mode there
+ * would break the desktop board for no gain.
+ *
+ * Written as an external store for the same reason useClock is: the board renders on
+ * the server, where there is no matchMedia. The server snapshot is false, so the first
+ * paint is the desktop board and the phone swaps in right after hydration.
+ */
+const COARSE_POINTER = "(pointer: coarse)";
+
+function coarsePointerList(): MediaQueryList | null {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia(COARSE_POINTER)
+    : null;
+}
+
+function subscribeToPointer(onChange: () => void): () => void {
+  const mql = coarsePointerList();
+  if (!mql) return () => {};
+  // addListener is the pre-Safari-14 spelling; still worth the two lines here.
+  if (mql.addEventListener) {
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }
+  mql.addListener(onChange);
+  return () => mql.removeListener(onChange);
+}
+
+function useCoarsePointer(): boolean {
+  return useSyncExternalStore(
+    subscribeToPointer,
+    () => coarsePointerList()?.matches ?? false,
+    () => false,
+  );
+}
+
+/**
  * The whole phrase, not a fragment — "ligar hoje 16:00", "atrasada · 17:00". Overdue
  * reads on its own and must not get a "ligar" prefix bolted in front of it.
  */
@@ -261,6 +317,20 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
 
   // Null during the server render, real time from just after hydration. See useClock.
   const now = useClock();
+  // False on a mouse and on the server; true only where a finger is the main pointer.
+  const touchMode = useCoarsePointer();
+  /**
+   * The card the finger picked, by id. Nothing else on the board reads it — a selected
+   * card is only a card with the destination bar open under it, and dropping the id
+   * (cancel, or a move that went through) closes the bar.
+   */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /**
+   * The selection as everything downstream sees it. Derived rather than cleared in an
+   * effect, so leaving the tap mode — a mouse plugged into the tablet, the phone cast
+   * to a monitor — cannot strand the bar on screen with no way to close it by touch.
+   */
+  const activeSelectionId = touchMode ? selectedId : null;
 
   /**
    * The dragged lead lives in a ref, not state: a re-render while a native drag is in
@@ -399,6 +469,35 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
     [performCommit],
   );
 
+  /**
+   * The two ways out of a selection that are not a tap on a card or a destination.
+   *
+   * The click listener deliberately ignores anything inside a card or inside the bar:
+   * those have their own React handlers (toggle off, take the selection, move the
+   * lead), and clearing here as well would undo them — React flushes a discrete event
+   * before it finishes bubbling up to the document, so this listener sees the very
+   * click that opened the bar.
+   */
+  useEffect(() => {
+    if (!activeSelectionId) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelectedId(null);
+    };
+    const onClick = (e: MouseEvent) => {
+      const el = e.target as Element | null;
+      if (el?.closest?.(".board-card") || el?.closest?.(".board-move-bar")) return;
+      setSelectedId(null);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    document.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("click", onClick);
+    };
+  }, [activeSelectionId]);
+
   function clearDropState(column: BoardColumnKey) {
     depth.current[column] = 0;
     setDropTarget(null);
@@ -417,6 +516,27 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
     commit(row, to, { registerAttempt: to === "nao_atendeu" });
   }
 
+  /**
+   * The lead the bar is open for, resolved from the merged rows rather than kept in
+   * state — the board can refresh underneath an open bar, and a card that left the
+   * board (or was moved by another tab) must close it rather than move a stale row.
+   */
+  const selectedRow = activeSelectionId
+    ? merged.find((r) => r.id === activeSelectionId) ?? null
+    : null;
+  const selectedColumn = selectedRow ? boardColumnFor(selectedRow) : null;
+
+  /**
+   * The tap half of a move. Same gate as a drop, same options — `commit` owns the
+   * confirm dialogs, the optimistic write, the +1 tentativa and the revert.
+   */
+  function moveSelected(to: BoardColumnKey) {
+    const row = selectedRow;
+    setSelectedId(null);
+    if (!row || boardColumnFor(row) === to) return;
+    commit(row, to, { registerAttempt: to === "nao_atendeu" });
+  }
+
   const total = merged.length;
 
   return (
@@ -425,7 +545,9 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <h3 style={{ fontSize: 19, fontWeight: 700, margin: 0, letterSpacing: "-.2px" }}>Quadro de ligações</h3>
           <span className="muted" style={{ fontSize: 12.5 }}>
-            Arraste as leads entre as colunas. Isso não mexe na etapa da tabela abaixo.
+            {touchMode
+              ? "Toque numa lead e escolha a coluna. Isso não mexe na etapa da tabela abaixo."
+              : "Arraste as leads entre as colunas. Isso não mexe na etapa da tabela abaixo."}
           </span>
         </div>
         <span
@@ -521,6 +643,9 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
                   }}
                   onRegisterAttempt={() => commit(row, "nao_atendeu", { registerAttempt: true })}
                   onOpenNotes={() => setNotesLeadId(row.id)}
+                  selectable={touchMode}
+                  selected={activeSelectionId === row.id}
+                  onSelect={() => setSelectedId((id) => (id === row.id ? null : row.id))}
                 />
               ))}
 
@@ -540,6 +665,37 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
           );
         })}
       </div>
+
+      {/* The destination bar. It only ever exists on a touch screen, because only a tap
+          can select a card — see useCoarsePointer. Rendered last so it paints over the
+          board, and below the two dialogs, which a selection never coexists with. */}
+      {selectedRow && (
+        <div className="board-move-bar" role="group" aria-label="Mover lead para">
+          <div className="board-move-bar-head">
+            <span className="board-move-bar-name">
+              Mover <strong>{selectedRow.name ?? "Sem nome"}</strong> para
+            </span>
+            <button className="board-move-cancel" onClick={() => setSelectedId(null)}>
+              Cancelar
+            </button>
+          </div>
+          {/* The current column is left out: a move onto it writes nothing, so offering
+              it would be a button that does nothing. Cancelling is what stays put. */}
+          <div className="board-move-targets">
+            {BOARD_COLUMN_KEYS.filter((key) => key !== selectedColumn).map((key) => (
+              <button
+                key={key}
+                className="board-move-target"
+                style={{ "--accent": COLUMN_ACCENT[key] } as React.CSSProperties}
+                onClick={() => moveSelected(key)}
+              >
+                <Icon size={14}>{COLUMN_ICON[key]}</Icon>
+                <span>{BOARD_COLUMN_LABELS[key]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {dialog && (
         <BoardDialog
@@ -577,6 +733,7 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
 
 function BoardCard({
   row, now, onDragStart, onDragEnd, onRegisterAttempt, onOpenNotes,
+  selectable, selected, onSelect,
 }: {
   row: FormLeadRow;
   now: Date | null;
@@ -584,6 +741,10 @@ function BoardCard({
   onDragEnd: () => void;
   onRegisterAttempt: () => void;
   onOpenNotes: () => void;
+  /** True only on a touch screen: a mouse click must leave the card alone. */
+  selectable: boolean;
+  selected: boolean;
+  onSelect: () => void;
 }) {
   const column = boardColumnFor(row);
   const due = dueLabel(row.next_call_at, now);
@@ -594,7 +755,24 @@ function BoardCard({
   const tel = telHrefBr(row.phone);
 
   return (
-    <div className="board-card" draggable onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    /* draggable stays on unconditionally: the desktop drag is untouched, and the
+       attribute is simply inert on a touch screen. The click handler is what is gated
+       — attaching it on a mouse would turn every click into a selection. */
+    <div
+      className="board-card"
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      data-selected={selected ? "true" : "false"}
+      {...(selectable
+        ? {
+            role: "button" as const,
+            tabIndex: 0,
+            "aria-pressed": selected,
+            onClick: onSelect,
+          }
+        : {})}
+    >
       {/* Columns are narrow enough to clip a long name, so the full one lives in the
           tooltip rather than nowhere. */}
       <div
