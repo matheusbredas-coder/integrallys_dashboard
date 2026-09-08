@@ -35,12 +35,24 @@ export function boardColumnFor(row: FormLeadRow): BoardColumnKey {
  * she raised her hand — so she pins to the top of whatever column she is in rather
  * than being findable only by spotting a badge in a stack of cards.
  *
- * After that it is "who is due soonest": a column sorted by attempt count would make
- * the caller scan for dates by eye. Leads with no due date (three attempts spent, or
- * a terminal column) sink to the bottom.
+ * After that it is "who is due soonest", and leads with no due date sink to the
+ * bottom — EXCEPT in "Não atendeu", which is ordered by arrival alone.
+ *
+ * That exception is the point. Registering a call in that column moves `next_call_at`
+ * (two hours out, then two business days, then null), so ordering by it made a card
+ * jump down the stack the instant "+1 tentativa" was clicked — the caller lost the
+ * lead she was looking at, mid-call. And since the card stopped showing its due date,
+ * the sort had no visible cause: cards just moved. Arrival order holds still, which is
+ * what a list you work top-down needs. Asked for on 06/09/2026.
+ *
+ * "Retorno marcado" keeps the due ordering, because there the date IS on the card and
+ * nothing the caller clicks changes it.
  */
 export function sortKeyFor(row: FormLeadRow): [number, number] {
   const answered = row.stage === "respondeu" ? 0 : 1;
+  // Every card here scores the same, so the comparison falls through to created_at.
+  if (boardColumnFor(row) === "nao_atendeu") return [answered, Number.POSITIVE_INFINITY];
+
   const due = row.next_call_at ? new Date(row.next_call_at).getTime() : Number.POSITIVE_INFINITY;
   return [answered, Number.isNaN(due) ? Number.POSITIVE_INFINITY : due];
 }

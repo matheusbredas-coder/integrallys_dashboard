@@ -158,7 +158,7 @@ describe("updateFormLeadBoard", () => {
 
   it("moves a lead and reports the authoritative counters back", async () => {
     const res = await updateFormLeadBoard("l1", "qualificado");
-    expect(res).toEqual({ ok: true, attempts: 0, nextCallAt: null });
+    expect(res).toEqual({ ok: true, attempts: 0, nextCallAt: null, callLog: [] });
     expect(updatePatches[0]).toMatchObject({ board_column: "qualificado", call_attempts: 0 });
     expect(revalidateTag).toHaveBeenCalledWith("form-leads", { expire: 0 });
   });
@@ -169,15 +169,50 @@ describe("updateFormLeadBoard", () => {
     expect((res as { nextCallAt: string }).nextCallAt).toBeTruthy();
     expect(updatePatches[0]).toMatchObject({ board_column: "nao_atendeu", call_attempts: 1 });
     expect(updatePatches[0]).toHaveProperty("last_call_at");
+
+    // The history gains exactly one entry, and it is the call just made.
+    const log = (updatePatches[0] as { call_log: string[] }).call_log;
+    expect(log).toHaveLength(1);
+    expect(log[0]).toBe(updatePatches[0].last_call_at);
+  });
+
+  it("keeps the earlier calls when it stamps a new one", async () => {
+    maybeSingle.mockResolvedValue({
+      data: { call_attempts: 1, call_log: ["2026-09-03T17:32:00.000Z"] },
+      error: null,
+    });
+    await updateFormLeadBoard("l1", "nao_atendeu", { registerAttempt: true });
+
+    const log = (updatePatches[0] as { call_log: string[] }).call_log;
+    expect(log).toHaveLength(2);
+    expect(log[0]).toBe("2026-09-03T17:32:00.000Z");
+  });
+
+  it("does not stamp a call on a move that adds no attempt", async () => {
+    // Dragging a lead who is already on her third try back into "Não atendeu" clamps
+    // the count — inventing a fourth call time there would misdate her history.
+    maybeSingle.mockResolvedValue({
+      data: { call_attempts: 3, call_log: ["a", "b", "c"].map((_, i) => `2026-09-0${i + 1}T12:00:00.000Z`) },
+      error: null,
+    });
+    await updateFormLeadBoard("l1", "nao_atendeu", { registerAttempt: true });
+
+    expect((updatePatches[0] as { call_log: string[] }).call_log).toEqual([
+      "2026-09-01T12:00:00.000Z", "2026-09-02T12:00:00.000Z", "2026-09-03T12:00:00.000Z",
+    ]);
   });
 
   it("resets the whole call history when a lead goes back to A ligar", async () => {
-    maybeSingle.mockResolvedValue({ data: { call_attempts: 2 }, error: null });
+    maybeSingle.mockResolvedValue({
+      data: { call_attempts: 2, call_log: ["2026-09-03T17:32:00.000Z", "2026-09-03T19:40:00.000Z"] },
+      error: null,
+    });
     const res = await updateFormLeadBoard("l1", null);
-    expect(res).toEqual({ ok: true, attempts: 0, nextCallAt: null });
+    expect(res).toEqual({ ok: true, attempts: 0, nextCallAt: null, callLog: [] });
     expect(updatePatches[0]).toEqual({
       board_column: null,
       call_attempts: 0,
+      call_log: [],
       last_call_at: null,
       next_call_at: null,
       notes: null,
@@ -187,7 +222,7 @@ describe("updateFormLeadBoard", () => {
   it("stops scheduling once three attempts are spent", async () => {
     maybeSingle.mockResolvedValue({ data: { call_attempts: 2 }, error: null });
     const res = await updateFormLeadBoard("l1", "nao_atendeu", { registerAttempt: true });
-    expect(res).toEqual({ ok: true, attempts: 3, nextCallAt: null });
+    expect(res).toMatchObject({ ok: true, attempts: 3, nextCallAt: null });
   });
 
   it("computes the attempt count from the DB, not from the caller", async () => {

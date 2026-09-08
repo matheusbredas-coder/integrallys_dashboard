@@ -71,6 +71,25 @@ Matching is **exact on the normalized name, never a substring** — that's what 
 answers (`"Qual seu incômodo?": "rugas"`) with no config change here, and promote them to a
 column later. Nothing is lost by sending too much.
 
+### The two extra questions (bairro, quanto quer perder)
+
+From 08/09/2026 the form also asks the lead **which neighbourhood she lives in** and **how much
+weight she wants to lose**. Neither has a column, and neither needs one: they ride along in
+`raw` and are read back at display time by `features/form-leads/form-answers.ts`. There is
+nothing to configure in n8n beyond passing the answers through — send them under whatever name
+Meta gives them.
+
+Matching is looser than the table above on purpose. Those aliases match a whole normalized
+label exactly, which is right for n8n's short machine names (`full_name`); these two are named
+after the form's own *question*, a full sentence that whoever edits the form in Ads Manager can
+reword at any time. So `form-answers.ts` tries exact aliases first and then falls back to
+keywords: anything containing `bairro` for the first, and for the second anything pairing a verb
+of losing (`perder`, `eliminar`, `emagrecer`) with a want, plus the literal `quantos quilos`.
+
+**The weight patterns never match on `peso` alone**, which is what stops "Qual seu peso atual?"
+being read as the goal. If the form ever asks both, the goal still wins. Covered by
+`form-answers.test.ts` — add a case there before rewording a question in a way you're unsure of.
+
 ## Setting up the HTTP Request node
 
 ### Credential
@@ -149,11 +168,47 @@ that lead is never deduped at all.
 Because `502` means "not stored" and `duplicate: true` means "already stored", retrying is safe
 in both directions: it cannot drop a lead and it cannot duplicate one.
 
-## Notifications
+## What happens when a lead lands
 
-`SLACK_WEBHOOK_URL` is left **unset** in Vercel — the "Lead Nova" email is itself the
-notification. Setting it makes the CRM post every new lead to Slack as well
-(`notifyNewFormLead`); nothing else changes if you do.
+A stored lead shows up in three places, all of them automatic — the ingest route is the only
+thing that has to run:
+
+| Where | How it gets there |
+|---|---|
+| **Slack** | `notifyNewFormLead` posts the "Novo lead — Meta Ads" block: nome, telefone, bairro, quanto quer perder. Requires `SLACK_WEBHOOK_URL` |
+| **Quadro de ligações → "A ligar"** | Nothing writes it. `board_column` starts `null`, and `boardColumnFor` reads `null` as the first column (`A_LIGAR`), so a brand new lead is on the board the moment the row exists. See `features/form-leads/board-columns.ts`. Her bairro and weight goal show as read-only rows on the card behind **Notas** |
+| **Leads do formulário (Meta)** | The table below the board, which lists every row |
+
+All three only fire on a genuine insert. A duplicate returns before any of them.
+
+### Slack
+
+The message carries **nome, telefone, bairro and quanto quer perder**. Campaign and form name
+were dropped from it on 08/09/2026: there is one campaign and one form, so both lines repeated
+themselves on every alert while the two answers that decide who to call first were missing. A
+lead from the older form still gets a well-formed message — the two rows read `—`.
+
+`SLACK_WEBHOOK_URL` must be set in Vercel **Production** and the app redeployed afterwards — a
+Vercel env var only reaches the running app on the next deployment. It was deliberately left
+unset until 08/09/2026, on the theory that the "Lead Nova" email was notification enough;
+Matheus asked for the Slack ping as well.
+
+Unsetting the var turns the notification back off with no code change: `postSlackMessage`
+returns `false` when there's no webhook, and the route only logs a failure when one is
+configured, so nothing starts crying wolf.
+
+### The board
+
+There is nothing to configure and nothing to write. The bairro and the weight goal appear as
+read-only rows on the lead's card (the **Notas** drawer), above the observations field —
+deliberately *not* seeded into that textarea, which is the caller's own text, gets rewritten
+after every call, and is wiped when a card goes back to "A ligar". What the lead herself
+submitted must not be losable that way.
+
+Two things could take a new lead *off* "A ligar", and neither happens on ingest: someone dragging the card to another column, or
+`updateFormLeadBoard` being called. The funnel `stage` (`novo`, `contatado`, …) never moves a
+card — board and funnel are separate fields on purpose, see the comment on `BOARD_COLUMNS` in
+`features/form-leads/types.ts`.
 
 ## Testing
 
@@ -184,4 +239,5 @@ before activating the workflow.
 | Malformed JSON / n8n sends nothing | The body was built as a JSON template with inline `={{ }}` instead of one `JSON.stringify` expression |
 | The same lead lands twice | Neither `id` nor `message_id` was sent, so there was nothing to dedupe on |
 | Nothing triggers | The Gmail search doesn't match. `subject:"Lead Nova"` is exact-phrase; confirm the real subject in Gmail's own search bar first |
-| Every lead posted to Slack | `SLACK_WEBHOOK_URL` is set in Vercel — unset it |
+| No Slack message for a new lead | `SLACK_WEBHOOK_URL` missing from Vercel Production, or set but not redeployed since. The route's response carries `"slack": false` when the post didn't go out |
+| A new lead isn't on the board | Check `board_column` on the row: only a value other than `null` moves her out of "A ligar". A terminal column (`qualificado`/`agendado`/`removido`) also hides her after 14 days |

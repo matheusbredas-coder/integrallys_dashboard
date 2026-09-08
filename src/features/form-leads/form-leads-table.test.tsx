@@ -77,7 +77,7 @@ function row(id: string, name: string | null): FormLeadRow {
     name, phone: null, email: null, raw: {}, protocolo: "emagrecimento", stage: "novo",
     notes: null, submitted_at: null, created_at: "2026-09-01T12:00:00Z",
     updated_at: "2026-09-01T12:00:00Z", board_column: null, call_attempts: 0,
-    last_call_at: null, next_call_at: null,
+    last_call_at: null, next_call_at: null, call_log: [],
   };
 }
 

@@ -3,11 +3,13 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import "@testing-library/jest-dom/vitest";
 
 type BoardOpts = { registerAttempt?: boolean; callbackAtIso?: string | null };
-type BoardResult = { ok: true; attempts: number; nextCallAt: string | null } | { error: string };
+type BoardResult =
+  | { ok: true; attempts: number; nextCallAt: string | null; callLog: string[] }
+  | { error: string };
 
 const updateFormLeadBoard =
   vi.fn<(id: string, column: string | null, opts?: BoardOpts) => Promise<BoardResult>>(
-    async () => ({ ok: true, attempts: 1, nextCallAt: null }),
+    async () => ({ ok: true, attempts: 1, nextCallAt: null, callLog: [] }),
   );
 const refresh = vi.fn();
 
@@ -34,6 +36,7 @@ function lead(over: Partial<FormLeadRow> = {}): FormLeadRow {
     email: null, raw: {}, protocolo: "emagrecimento", stage: "novo", notes: null,
     submitted_at: null, created_at: "2026-09-01T12:00:00Z", updated_at: "2026-09-01T12:00:00Z",
     board_column: null, call_attempts: 0, last_call_at: null, next_call_at: null,
+    call_log: [],
     ...over,
   };
 }
@@ -119,7 +122,7 @@ function modal(title: "Começar do zero?" | "Retorno marcado"): HTMLElement {
 
 beforeEach(() => {
   updateFormLeadBoard.mockClear();
-  updateFormLeadBoard.mockResolvedValue({ ok: true, attempts: 1, nextCallAt: null });
+  updateFormLeadBoard.mockResolvedValue({ ok: true, attempts: 1, nextCallAt: null, callLog: [] });
   updateFormLeadNotes.mockClear();
   updateFormLeadNotes.mockImplementation(async (_id, notes) => ({ ok: true, notes }));
   refresh.mockClear();
@@ -164,7 +167,10 @@ describe("LeadsBoard", () => {
   });
 
   it("adds an attempt from the card's own button", async () => {
-    updateFormLeadBoard.mockResolvedValue({ ok: true, attempts: 2, nextCallAt: null });
+    updateFormLeadBoard.mockResolvedValue({
+      ok: true, attempts: 2, nextCallAt: null,
+      callLog: ["2026-09-03T17:32:00.000Z", "2026-09-03T19:40:00.000Z"],
+    });
     render(<LeadsBoard rows={[lead({ board_column: "nao_atendeu", call_attempts: 1 })]} />);
 
     fireEvent.click(screen.getByRole("button", { name: "+1 tentativa" }));
@@ -180,6 +186,70 @@ describe("LeadsBoard", () => {
     render(<LeadsBoard rows={[lead({ board_column: "nao_atendeu", call_attempts: 3 })]} />);
     expect(screen.queryByRole("button", { name: "+1 tentativa" })).not.toBeInTheDocument();
     expect(screen.getByText("tentativas esgotadas")).toBeInTheDocument();
+  });
+
+  it("carries no date at all on a Não atendeu card", () => {
+    // The card says which try she is on; WHEN is the notes drawer's job. The board
+    // used to shout a red "atrasada · 04/09" here, which on a column worked over days
+    // meant nearly every card was red and none of it was information.
+    render(<LeadsBoard rows={[lead({
+      board_column: "nao_atendeu",
+      call_attempts: 1,
+      next_call_at: "2026-01-08T17:00:00Z",
+    })]} />);
+
+    const card = cardFor("Lenita");
+    expect(within(card).getByText("1ª")).toBeInTheDocument();
+    expect(card).not.toHaveTextContent(/atrasada/);
+    expect(card).not.toHaveTextContent(/08\/01/);
+    expect(card).not.toHaveTextContent(/ligar hoje|ligar amanhã/);
+  });
+
+  it("puts Ligar and Notas below the attempt counter and its button", () => {
+    render(<LeadsBoard rows={[lead({ board_column: "nao_atendeu", call_attempts: 1 })]} />);
+
+    const card = cardFor("Lenita");
+    const order = Array.from(card.querySelectorAll("button, a"))
+      .map((el) => el.textContent?.trim())
+      .filter(Boolean);
+    // "+1 tentativa" comes first, then the pair the caller uses to act on it.
+    expect(order).toEqual(["+1 tentativa", "Ligar", "Notas"]);
+  });
+
+  it("leaves the card where it was when +1 tentativa is clicked", async () => {
+    // The caller clicks mid-call. The card jumping down the column loses her place,
+    // and until this was fixed it always did: registering a call rewrites the next
+    // call date, which is what the column used to sort by.
+    render(<LeadsBoard rows={[
+      lead({ id: "l1", name: "Lenita", board_column: "nao_atendeu", call_attempts: 1,
+             created_at: "2026-09-03T09:00:00Z", next_call_at: "2026-09-03T11:00:00Z" }),
+      lead({ id: "l2", name: "Marizete", board_column: "nao_atendeu", call_attempts: 1,
+             created_at: "2026-09-01T09:00:00Z", next_call_at: "2026-09-03T12:00:00Z" }),
+    ]} />);
+
+    const namesInColumn = () =>
+      Array.from(column("Não atendeu").querySelectorAll(".board-card"))
+        .map((card) => card.firstElementChild?.textContent);
+
+    expect(namesInColumn()).toEqual(["Lenita", "Marizete"]);
+
+    const lenita = cardFor("Lenita");
+    fireEvent.click(within(lenita).getByRole("button", { name: "+1 tentativa" }));
+    await waitFor(() => expect(updateFormLeadBoard).toHaveBeenCalledTimes(1));
+
+    expect(namesInColumn()).toEqual(["Lenita", "Marizete"]);
+  });
+
+  it("keeps a missed callback in plain words, never in red", () => {
+    // "Retorno marcado" is the one column that still carries a date on the card: the
+    // caller chose that day herself, so it is the whole reason the card is there.
+    render(<LeadsBoard rows={[lead({
+      board_column: "retorno",
+      next_call_at: "2026-01-08T17:00:00Z",
+    })]} />);
+
+    expect(screen.getByText("retorno 08/01 14:00")).toBeInTheDocument();
+    expect(screen.queryByText(/atrasada/)).not.toBeInTheDocument();
   });
 
   it("asks for a date before moving into Retorno marcado, and aborts if cancelled", async () => {
@@ -276,6 +346,100 @@ describe("LeadsBoard", () => {
       const labels = buttons.map((b) => b.textContent);
       expect(labels).toContain("Notas •");
       expect(labels).toContain("Notas");
+    });
+
+    it("shows the bairro and the weight goal the lead submitted", async () => {
+      render(<LeadsBoard rows={[lead({
+        raw: {
+          "Em qual bairro você mora?": "Praia da Costa",
+          "Quantos quilos você quer perder?": "12kg",
+        },
+      })]} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+
+      const drawer = await screen.findByRole("dialog");
+      expect(within(drawer).getByText("Bairro")).toBeInTheDocument();
+      expect(within(drawer).getByText("Praia da Costa")).toBeInTheDocument();
+      expect(within(drawer).getByText("Quer perder")).toBeInTheDocument();
+      expect(within(drawer).getByText("12kg")).toBeInTheDocument();
+    });
+
+    it("leaves both rows out for a lead who filled the older form", async () => {
+      render(<LeadsBoard rows={[lead({ raw: { "Nome completo": "Lenita" } })]} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+
+      const drawer = await screen.findByRole("dialog");
+      expect(within(drawer).queryByText("Bairro")).not.toBeInTheDocument();
+      expect(within(drawer).queryByText("Quer perder")).not.toBeInTheDocument();
+      // The rest of the card is unaffected.
+      expect(within(drawer).getByText("Telefone")).toBeInTheDocument();
+    });
+
+    // They are the lead's own words, and the textarea is the caller's — she rewrites it
+    // after every call, and a restart wipes it. Seeding one into the other loses them.
+    it("keeps them out of the observações textarea", async () => {
+      render(<LeadsBoard rows={[lead({
+        notes: "atendeu, pediu para ligar depois",
+        raw: { Bairro: "Itapuã", "Quantos quilos você quer perder?": "12kg" },
+      })]} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+
+      const drawer = await screen.findByRole("dialog");
+      const textarea = within(drawer).getByLabelText("Observações") as HTMLTextAreaElement;
+      expect(textarea.value).toBe("atendeu, pediu para ligar depois");
+    });
+
+    it("lists when each call was placed", async () => {
+      render(<LeadsBoard rows={[lead({
+        board_column: "nao_atendeu",
+        call_attempts: 2,
+        last_call_at: "2026-09-03T19:40:00-03:00",
+        call_log: ["2026-09-03T14:32:00-03:00", "2026-09-03T16:40:00-03:00"],
+      })]} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+
+      const drawer = await screen.findByRole("dialog");
+      expect(within(drawer).getByText("1ª ligação")).toBeInTheDocument();
+      expect(within(drawer).getByText("qui 03/09 14:32")).toBeInTheDocument();
+      expect(within(drawer).getByText("2ª ligação")).toBeInTheDocument();
+      expect(within(drawer).getByText("qui 03/09 16:40")).toBeInTheDocument();
+    });
+
+    it("shows the call the +1 tentativa button just registered", async () => {
+      // The whole point of the history: the caller clicks, then opens Notas to write
+      // what happened, and the call she just made is already listed there.
+      updateFormLeadBoard.mockResolvedValue({
+        ok: true, attempts: 2, nextCallAt: null,
+        callLog: ["2026-09-03T17:32:00.000Z", "2026-09-03T19:40:00.000Z"],
+      });
+      render(<LeadsBoard rows={[lead({
+        board_column: "nao_atendeu",
+        call_attempts: 1,
+        call_log: ["2026-09-03T14:32:00-03:00"],
+      })]} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "+1 tentativa" }));
+      await waitFor(() => expect(updateFormLeadBoard).toHaveBeenCalledTimes(1));
+
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+
+      const drawer = await screen.findByRole("dialog");
+      // Both times come back from the action, which is what was actually stored.
+      expect(within(drawer).getByText("qui 03/09 14:32")).toBeInTheDocument();
+      expect(within(drawer).getByText("qui 03/09 16:40")).toBeInTheDocument();
+    });
+
+    it("says nothing about calls for a lead nobody has phoned", async () => {
+      render(<LeadsBoard rows={[lead()]} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /^Notas/ }));
+
+      const drawer = await screen.findByRole("dialog");
+      expect(within(drawer).queryByText("Ligações")).not.toBeInTheDocument();
     });
 
     it("opens the drawer with who she is and when she arrived", async () => {
@@ -380,7 +544,7 @@ describe("LeadsBoard", () => {
     });
 
     it("clears the attempt badge and the note on the card right away", async () => {
-      updateFormLeadBoard.mockResolvedValue({ ok: true, attempts: 0, nextCallAt: null });
+      updateFormLeadBoard.mockResolvedValue({ ok: true, attempts: 0, nextCallAt: null, callLog: [] });
       render(
         <LeadsBoard
           rows={[lead({ board_column: "nao_atendeu", call_attempts: 2, notes: "atendeu a filha" })]}

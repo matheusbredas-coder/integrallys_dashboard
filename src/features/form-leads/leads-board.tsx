@@ -54,6 +54,7 @@ import { useRouter } from "next/navigation";
 import { updateFormLeadBoard } from "./actions";
 import { boardColumnFor, groupForBoard } from "./board-columns";
 import { MAX_CALL_ATTEMPTS } from "./call-cadence";
+import { appendCall, parseCallLog } from "./call-log";
 import { formatPhoneBr, telHrefBr } from "@/lib/format";
 import { STAGE_COLORS } from "./form-leads-table";
 import {
@@ -244,10 +245,15 @@ function useCoarsePointer(): boolean {
 }
 
 /**
- * The whole phrase, not a fragment — "ligar hoje 16:00", "atrasada · 17:00". Overdue
- * reads on its own and must not get a "ligar" prefix bolted in front of it.
+ * The whole phrase, not a fragment — "ligar hoje 16:00", "ligar 04/09 14:00".
+ *
+ * There is deliberately NO overdue variant. The board used to shout "atrasada" in red
+ * at every card whose time had passed, which on a list worked over days meant most of
+ * the column was red and none of it was information. A late call reads in the same
+ * neutral words as an early one; when the call actually happened is a question the
+ * notes drawer answers, from the real history (call-log.ts).
  */
-function dueLabel(iso: string | null, now: Date | null): { text: string; overdue: boolean } | null {
+function dueLabel(iso: string | null, now: Date | null): { text: string } | null {
   if (!iso) return null;
   const due = new Date(iso);
   if (Number.isNaN(due.getTime())) return null;
@@ -257,7 +263,7 @@ function dueLabel(iso: string | null, now: Date | null): { text: string; overdue
     minute: "2-digit",
   });
   // Before hydration there is no clock, so the date is shown without a relative word.
-  if (!now) return { text: time, overdue: false };
+  if (!now) return { text: time };
 
   const dayOf = (d: Date) =>
     new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(d);
@@ -265,16 +271,11 @@ function dueLabel(iso: string | null, now: Date | null): { text: string; overdue
   const today = dayOf(now);
   const short = `${dueDay.slice(8)}/${dueDay.slice(5, 7)}`;
 
-  if (dueDay === today) {
-    return due.getTime() < now.getTime()
-      ? { text: `atrasada · ${time}`, overdue: true }
-      : { text: `ligar hoje ${time}`, overdue: false };
-  }
-  if (dueDay < today) return { text: `atrasada · ${short}`, overdue: true };
+  if (dueDay === today) return { text: `ligar hoje ${time}` };
 
   const tomorrow = dayOf(new Date(now.getTime() + 86_400_000));
-  if (dueDay === tomorrow) return { text: `ligar amanhã ${time}`, overdue: false };
-  return { text: `ligar ${short} ${time}`, overdue: false };
+  if (dueDay === tomorrow) return { text: `ligar amanhã ${time}` };
+  return { text: `ligar ${short} ${time}` };
 }
 
 /**
@@ -387,6 +388,9 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
       // dates and the observations. `commit` is what warns about that.
       const restarting = column === null;
       const before = { ...row };
+      const attempts = opts?.registerAttempt
+        ? Math.min(row.call_attempts + 1, MAX_CALL_ATTEMPTS)
+        : row.call_attempts;
 
       setPending((p) => ({
         ...p,
@@ -394,15 +398,21 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
           ? {
               board_column: null,
               call_attempts: 0,
+              call_log: [],
               last_call_at: null,
               next_call_at: null,
               notes: null,
             }
           : {
               board_column: column,
-              call_attempts: opts?.registerAttempt
-                ? Math.min(row.call_attempts + 1, MAX_CALL_ATTEMPTS)
-                : row.call_attempts,
+              call_attempts: attempts,
+              // Stamped from the browser's clock only so the notes drawer, opened in
+              // the same second as the move, is not a call behind. The server's own
+              // timestamp replaces it below and is the one that was stored.
+              call_log:
+                attempts > row.call_attempts
+                  ? appendCall(parseCallLog(row.call_log), new Date().toISOString())
+                  : row.call_log,
             },
       }));
 
@@ -418,6 +428,7 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
             [row.id]: {
               board_column: before.board_column,
               call_attempts: before.call_attempts,
+              call_log: before.call_log,
               last_call_at: before.last_call_at,
               next_call_at: before.next_call_at,
               notes: before.notes,
@@ -433,6 +444,7 @@ export function LeadsBoard({ rows }: { rows: FormLeadRow[] }) {
           [row.id]: {
             board_column: column,
             call_attempts: res.attempts,
+            call_log: res.callLog,
             next_call_at: res.nextCallAt,
             ...(restarting ? { last_call_at: null, notes: null } : {}),
           },
@@ -786,6 +798,12 @@ function BoardCard({
         {formatPhoneBr(row.phone)}
       </div>
 
+      {/* Which try she is on, and the button that adds the next one — the two things
+          that belong together, on their own line above "Ligar"/"Notas".
+
+          There is deliberately no date here. The card used to carry the next call time
+          next to the badge; it was noise on a column worked over days, and the times
+          that actually matter (when each call happened) are in the notes drawer. */}
       {column === "nao_atendeu" && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <span
@@ -802,27 +820,29 @@ function BoardCard({
           >
             {ORDINAL[row.call_attempts] ?? `${row.call_attempts}ª`}
           </span>
-          <span
-            className={due?.overdue ? undefined : "muted"}
-            style={{ fontSize: 11, color: due?.overdue ? "#bf6b6b" : undefined, fontWeight: due?.overdue ? 600 : undefined }}
-          >
-            {spent ? "tentativas esgotadas" : (due?.text ?? "—")}
-          </span>
+          {spent ? (
+            <span className="muted" style={{ fontSize: 11 }}>tentativas esgotadas</span>
+          ) : (
+            /* draggable={false} so grabbing the button doesn't start a card drag; the
+               stopPropagation keeps the click from reaching the card underneath. */
+            <button
+              className="board-chip"
+              draggable={false}
+              onClick={(e) => { e.stopPropagation(); onRegisterAttempt(); }}
+            >
+              +1 tentativa
+            </button>
+          )}
         </div>
       )}
 
       {column === "retorno" && due && (
-        <span
-          className={due.overdue ? undefined : "muted"}
-          style={{ fontSize: 11, color: due.overdue ? "#bf6b6b" : undefined, fontWeight: due.overdue ? 600 : undefined }}
-        >
-          {due.overdue ? due.text : `retorno ${due.text.replace(/^ligar /, "")}`}
+        <span className="muted" style={{ fontSize: 11 }}>
+          {`retorno ${due.text.replace(/^ligar /, "")}`}
         </span>
       )}
 
       <div className="board-card-actions">
-        {/* draggable={false} so grabbing a button doesn't start a card drag; the
-            stopPropagation keeps the click from reaching the card underneath. */}
         <div className="board-card-actions-pair">
           {/* An <a href="tel:"> rather than a button: on a phone it hands the number
               straight to the dialer already typed in (iOS then asks to confirm), and on
@@ -859,16 +879,6 @@ function BoardCard({
             <span className="chip-label">Notas{hasNotes ? " •" : ""}</span>
           </button>
         </div>
-
-        {column === "nao_atendeu" && !spent && (
-          <button
-            className="board-chip"
-            draggable={false}
-            onClick={(e) => { e.stopPropagation(); onRegisterAttempt(); }}
-          >
-            +1 tentativa
-          </button>
-        )}
       </div>
     </div>
   );

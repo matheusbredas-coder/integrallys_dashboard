@@ -24,6 +24,7 @@ function lead(over: Partial<FormLeadRow> = {}): FormLeadRow {
     call_attempts: 0,
     last_call_at: null,
     next_call_at: null,
+    call_log: [],
     ...over,
   };
 }
@@ -64,6 +65,32 @@ describe("compareForBoard", () => {
   it("orders the rest by who is due soonest", () => {
     const later = lead({ id: "later", next_call_at: "2026-09-05T12:00:00Z" });
     const sooner = lead({ id: "sooner", next_call_at: "2026-09-02T12:00:00Z" });
+    expect([later, sooner].sort(compareForBoard).map((r) => r.id)).toEqual(["sooner", "later"]);
+  });
+
+  it("holds a Não atendeu card still, whatever its next call date says", () => {
+    // Registering a call rewrites next_call_at; the card must not jump down the stack
+    // while the caller is looking at it. That column goes by arrival, newest first.
+    const older = lead({
+      id: "older", board_column: "nao_atendeu",
+      created_at: "2026-09-01T09:00:00Z", next_call_at: "2026-09-02T12:00:00Z",
+    });
+    const newer = lead({
+      id: "newer", board_column: "nao_atendeu",
+      created_at: "2026-09-03T09:00:00Z", next_call_at: "2026-09-09T12:00:00Z",
+    });
+
+    expect([older, newer].sort(compareForBoard).map((r) => r.id)).toEqual(["newer", "older"]);
+    // The same pair after a call is registered on the newer one: still in that order,
+    // even with her next call pushed past the other's and then spent entirely.
+    const called = { ...newer, call_attempts: 3, next_call_at: null };
+    expect([older, called].sort(compareForBoard).map((r) => r.id)).toEqual(["newer", "older"]);
+  });
+
+  it("still orders Retorno marcado by the date the caller picked", () => {
+    // There the date is on the card, and nothing the caller clicks moves it.
+    const later = lead({ id: "later", board_column: "retorno", next_call_at: "2026-09-05T12:00:00Z" });
+    const sooner = lead({ id: "sooner", board_column: "retorno", next_call_at: "2026-09-02T12:00:00Z" });
     expect([later, sooner].sort(compareForBoard).map((r) => r.id)).toEqual(["sooner", "later"]);
   });
 

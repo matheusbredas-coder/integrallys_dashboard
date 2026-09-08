@@ -7,6 +7,17 @@
  * Layout follows features/patients/patient-drawer.tsx — overlay plus a fixed panel on
  * the right — so the two drawers in the app behave the same way.
  *
+ * It also carries the call history — when each attempt was actually placed — which is
+ * written by the board and read-only here. That is the only place those times are shown:
+ * the card itself says which attempt she is on, not when the phone rang.
+ *
+ * The two questions the form asks beyond name and phone — her neighbourhood and how much
+ * she wants to lose — are read-only rows up here, NOT seeded into the observations field
+ * below. Same reason the call history sits outside it: the textarea is the caller's own
+ * text, she rewrites it after every call, and going back to "A ligar" wipes it. What the
+ * lead herself submitted must not be losable that way. They come out of `raw`, so a lead
+ * from the older form simply doesn't show the rows. See form-answers.ts.
+ *
  * It also carries the funnel stage as read-only text. That line used to sit on the card
  * itself and was moved here: the board and the table can legitimately disagree (the
  * board's "Agendado" is the caller's note, `stage='agendado'` is a booking that landed in
@@ -19,6 +30,8 @@ import { createPortal } from "react-dom";
 import { formatDateTimeBrt, formatPhoneBr } from "@/lib/format";
 import { buildBrWaMeUrl } from "@/features/wa-links/link";
 import { updateFormLeadNotes } from "./actions";
+import { callLogEntries, formatCallAt } from "./call-log";
+import { leadNeighbourhood, leadWeightGoal } from "./form-answers";
 import { stageLabel, type FormLeadRow } from "./types";
 
 export function LeadNotesDrawer({
@@ -38,6 +51,12 @@ export function LeadNotesDrawer({
   // Null for a row with no usable number — then the button is left out rather than
   // shown dead, since a wa.me link with junk digits opens WhatsApp on an error.
   const waUrl = buildBrWaMeUrl(row.phone);
+  // Written by the board every time a call is registered; nothing here can edit them.
+  const calls = callLogEntries(row);
+  // Null on any lead who filled the older form, which is why both rows are conditional
+  // rather than showing an empty dash on half the board.
+  const neighbourhood = leadNeighbourhood(row.raw);
+  const weightGoal = leadWeightGoal(row.raw);
 
   // Escape closes, and the cursor lands in the field — the caller opens this to type,
   // not to read.
@@ -107,6 +126,8 @@ export function LeadNotesDrawer({
         <div style={{ display: "grid", gap: 2 }}>
           <Field label="Telefone" value={formatPhoneBr(row.phone)} />
           <Field label="E-mail" value={row.email ?? "—"} />
+          {neighbourhood && <Field label="Bairro" value={neighbourhood} />}
+          {weightGoal && <Field label="Quer perder" value={weightGoal} />}
           <Field label="Entrou na lista" value={formatDateTimeBrt(row.created_at)} />
           <Field label="Etapa no funil" value={stageLabel(row.stage)} />
         </div>
@@ -128,6 +149,28 @@ export function LeadNotesDrawer({
             <WhatsAppGlyph />
             Abrir conversa no WhatsApp
           </a>
+        )}
+
+        {/* Above the free-text field and outside it on purpose: these are the app's
+            record of what happened, and a caller reworking her observations must not be
+            able to erase them by selecting the wrong three lines. */}
+        {calls.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>Ligações</span>
+            <div style={{ display: "grid", gap: 2 }}>
+              {calls.map((call) => (
+                <div
+                  key={`${call.attempt}-${call.at}`}
+                  style={{ display: "flex", justifyContent: "space-between", gap: 14, padding: "7px 0", borderBottom: "1px solid var(--line)" }}
+                >
+                  <span className="muted" style={{ fontSize: 12.5 }}>{call.attempt}ª ligação</span>
+                  <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>
+                    {formatCallAt(call.at)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minHeight: 0 }}>

@@ -6,6 +6,7 @@ import { enqueueStageEvent } from "@/features/capi/queue";
 import { isBoardColumn, type BoardColumn } from "./types";
 import { isFormLeadStage } from "./types";
 import { MAX_CALL_ATTEMPTS, nextCallAfter, normalizeCallbackAt } from "./call-cadence";
+import { appendCall, parseCallLog } from "./call-log";
 import { classifyCsvLeads, parseCsvLeads, type ClassifiedCsvLeadRow } from "./csv";
 
 // Session guard, same shape as features/campaigns/actions.ts: the service-role client
@@ -79,14 +80,17 @@ export async function updateFormLeadStage(
  *     callback for 03:00 on a Sunday.
  *
  * `column` null puts the lead back in the implicit first column ("A ligar"), and that move
- * alone RESETS the lead: attempts back to zero, both call dates cleared, notes wiped. It is
- * the one irreversible thing the board does — see the comment at the reset below.
+ * alone RESETS the lead: attempts back to zero, both call dates cleared, the call history
+ * emptied, notes wiped. It is the one irreversible thing the board does — see the comment
+ * at the reset below.
  */
 export async function updateFormLeadBoard(
   id: string,
   column: BoardColumn | null,
   opts?: { registerAttempt?: boolean; callbackAtIso?: string | null }
-): Promise<{ ok: true; attempts: number; nextCallAt: string | null } | { error: string }> {
+): Promise<
+  { ok: true; attempts: number; nextCallAt: string | null; callLog: string[] } | { error: string }
+> {
   const unauth = await requireUser();
   if (unauth) return unauth;
 
@@ -100,7 +104,7 @@ export async function updateFormLeadBoard(
 
   const { data: current, error: readError } = await sb
     .from("form_leads")
-    .select("call_attempts")
+    .select("call_attempts, call_log")
     .eq("id", id)
     .maybeSingle();
 
@@ -112,15 +116,26 @@ export async function updateFormLeadBoard(
 
   const previousAttempts = Number(current.call_attempts ?? 0);
   // Moving a lead back to "A ligar" is the caller saying "start this one over": the
-  // attempt count, the call dates and the observations all go back to how a brand new
-  // lead looks, so the card carries nothing from the previous round. Deliberately
-  // destructive — there is no history table behind `notes`.
+  // attempt count, the call dates, the call history and the observations all go back to
+  // how a brand new lead looks, so the card carries nothing from the previous round.
+  // Deliberately destructive — there is no history table behind `notes` or `call_log`.
   const restarting = column === null;
   const attempts = restarting
     ? 0
     : opts?.registerAttempt
       ? Math.min(previousAttempts + 1, MAX_CALL_ATTEMPTS)
       : previousAttempts;
+
+  // The history follows the counter exactly: a call is stamped only when this move
+  // actually adds one. `registerAttempt` alone is not enough — dropping a lead who
+  // has already spent her three tries into "Não atendeu" clamps the count, and
+  // stamping a call there would invent one that nobody placed.
+  const previousLog = parseCallLog(current.call_log);
+  const callLog = restarting
+    ? []
+    : attempts > previousAttempts
+      ? appendCall(previousLog, now.toISOString())
+      : previousLog;
 
   let nextCallAt: Date | null = null;
   if (column === "nao_atendeu") {
@@ -133,6 +148,7 @@ export async function updateFormLeadBoard(
   const patch: Record<string, unknown> = {
     board_column: column,
     call_attempts: attempts,
+    call_log: callLog,
     next_call_at: nextCallAt ? nextCallAt.toISOString() : null,
   };
   if (restarting) {
@@ -168,6 +184,7 @@ export async function updateFormLeadBoard(
     ok: true,
     attempts,
     nextCallAt: nextCallAt ? nextCallAt.toISOString() : null,
+    callLog,
   };
 }
 

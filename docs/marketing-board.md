@@ -15,6 +15,7 @@ Ele tem campos próprios (migração 028) e é só isso que ele toca:
 | `call_attempts` | quantas ligações já foram feitas (máx. 3) |
 | `last_call_at` | quando foi a última |
 | `next_call_at` | quando é a próxima |
+| `call_log` | quando foi **cada** uma (migração 030) |
 
 Motivo: `stage` é um contrato de três escritores (o dropdown da tabela, o bot via
 `POST /api/leads/form/stage`, e a importação de CSV) e **toda** escrita nele dispara uma
@@ -39,12 +40,13 @@ essa lead do zero*. `updateFormLeadBoard` com `column = null` grava, na mesma es
 | campo | vira |
 |---|---|
 | `call_attempts` | `0` |
+| `call_log` | `[]` |
 | `last_call_at` | `NULL` |
 | `next_call_at` | `NULL` |
 | `notes` | `NULL` |
 
-Ou seja, o card volta a parecer uma lead recém-chegada — sem selo de tentativa, sem data de
-próxima ligação e sem observação.
+Ou seja, o card volta a parecer uma lead recém-chegada — sem selo de tentativa, sem histórico
+de ligações, sem data de próxima ligação e sem observação.
 
 **Isso é a única coisa irreversível do quadro**: não existe histórico por trás de `notes`, o
 texto apagado não volta. Por isso o quadro pergunta antes, dizendo o que vai perder
@@ -76,7 +78,8 @@ O `stage` é **lido** para essas duas coisas. Nunca escrito.
 ## Notas
 
 Cada card tem um botão "Notas" que abre a ficha da lead numa gaveta: telefone, e-mail, quando
-ela entrou na lista, a etapa no funil (só leitura) e um campo livre de observações. O botão
+ela entrou na lista, a etapa no funil (só leitura), **o histórico das ligações** e um campo
+livre de observações. O botão
 aparece em dourado com um ponto (`Notas •`) quando já existe algo escrito, para a pessoa saber
 sem precisar abrir.
 
@@ -85,6 +88,37 @@ lida nem escrita por nada** até agora (a projeção do bot em `booking/formLead
 seleciona), então o quadro pôde assumi-la sem migração nova. `updateFormLeadNotes` segue a
 mesma regra de isolamento do resto do quadro: não escreve `stage`, não dispara CAPI. Campo
 vazio volta a `NULL`, para "tem nota?" continuar sendo uma verificação só.
+
+### Histórico de ligações
+
+Acima do campo de observações, a gaveta lista quando cada ligação foi feita:
+
+```
+Ligações
+  1ª ligação    qui 03/09 14:32
+  2ª ligação    qui 03/09 16:40
+```
+
+Quem grava é o quadro, nas duas ações que já contavam uma tentativa: arrastar (ou tocar) o card
+para "Não atendeu", e o botão "+1 tentativa". O carimbo é do relógio do **servidor**, e sai
+junto com o `call_attempts` na mesma escrita — só quando a contagem realmente sobe, para um
+card que já gastou as três tentativas não inventar uma quarta ligação.
+
+Guarda em `form_leads.call_log` (migração 030): um array jsonb de strings ISO, mais antiga
+primeiro, no máximo 3. `last_call_at` continua existindo — é o que decide quando uma lead
+terminada some do quadro (`visibleOnBoard`) — mas guarda **uma** data e é sobrescrito, e foi
+por isso que a coluna nova precisou existir.
+
+Toda a leitura passa por `src/features/form-leads/call-log.ts`, nunca pela coluna direto. Ele
+resolve dois casos que a coluna sozinha erra: uma lead trabalhada **antes** da migração tem
+histórico vazio e só `last_call_at` — essa hora aparece assim mesmo, em vez de a gaveta ficar
+em branco; e uma lead trabalhada dos dois lados da migração tem menos entradas do que
+tentativas, e aí a numeração é contada **de trás para frente** (a hora registrada é a da última
+ligação, não a da primeira).
+
+A lista é só leitura e fica **fora** do campo de observações de propósito: é o registro do
+sistema, e quem reescreve as próprias anotações não pode apagá-lo sem querer selecionando as
+linhas erradas.
 
 **A gaveta é renderizada num portal para o `<body>`, e isso não é opcional.** O quadro fica
 dentro de um `.card`, cuja classe global tem `transform` no hover — e qualquer ancestral com
@@ -100,6 +134,49 @@ A tinta é misturada com `color-mix` em cima de `--panel-hi` em vez de ser uma c
 a mesma porcentagem funcionar nos dois temas: ela acompanha a cor do painel em vez de ser um
 tom fixo que ficaria lavado no escuro e sujo no claro. Por isso `COLUMN_ACCENT` só tem cores
 literais, nunca variáveis CSS — `color-mix` precisa de uma cor de verdade para trabalhar.
+
+## O card de "Não atendeu" não tem data, e nenhum card fica vermelho
+
+O quadro já teve um `atrasada · 04/09` vermelho em todo card cuja hora tinha passado. Numa
+lista trabalhada ao longo de dias, quase a coluna inteira ficava vermelha e o vermelho parava
+de significar qualquer coisa. Saiu em 06/09/2026, junto com a chegada do histórico de ligações
+— que é onde a pergunta "quando ela foi chamada mesmo?" passou a ser respondida, com hora de
+verdade em vez de cor.
+
+`dueLabel` em `leads-board.tsx` não tem mais ramo de atraso: quando mostra data, mostra em
+palavras neutras (`ligar hoje 14:00`, `retorno 08/01 14:00`). Se alguém for recolocar o
+vermelho, leia esta seção antes.
+
+E o card de "Não atendeu" não mostra data nenhuma. Ele carrega, nesta ordem:
+
+```
+Lenita Alvarez
+27 98182-0451
+[2ª]  [+1 tentativa]
+[Ligar]  [Notas]
+```
+
+O selo da tentativa e o botão que soma a próxima ficam juntos, numa linha própria acima de
+"Ligar"/"Notas" — um par é sobre a ligação que está sendo feita, o outro é como se faz. Quando
+as três acabam, o botão dá lugar a "tentativas esgotadas" e o selo continua. As outras colunas
+mantêm só o par de baixo; "Retorno marcado" é a única que ainda mostra data no card, porque
+quem liga escolheu aquele dia e é por isso que o card está ali.
+
+### E o card não sai do lugar quando se clica "+1 tentativa"
+
+"Não atendeu" é ordenada por **chegada**, não por data da próxima ligação. Registrar uma
+ligação reescreve `next_call_at` (duas horas depois, depois dois dias úteis, depois `null`), e
+enquanto a coluna era ordenada por essa data o card despencava na pilha no instante do clique —
+quem estava no meio da ligação perdia a lead de vista. Somado a isso, o card deixou de mostrar
+a data: a reordenação não tinha nem causa visível. Pedido em 06/09/2026.
+
+As outras colunas não mudaram. "Retorno marcado" continua por data, porque ali a data está no
+card e nada que a pessoa clica mexe nela. E a lead que respondeu o WhatsApp do bot continua
+grudada no topo de qualquer coluna.
+
+Está em `sortKeyFor` (`board-columns.ts`), com testes em `board-columns.test.ts`
+("holds a Não atendeu card still…") e em `leads-board.test.tsx`
+("leaves the card where it was when +1 tentativa is clicked").
 
 ## Cadência das ligações
 

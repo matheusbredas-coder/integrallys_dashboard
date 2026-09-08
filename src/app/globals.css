@@ -617,10 +617,11 @@ html, body {
 }
 .board-chip[data-on="true"] { color: var(--gold); border-color: rgba(217, 178, 76, .38); }
 
-/* The card's button row. "Ligar" and "Notas" are one inseparable pair — they are the
-   two things the caller reaches for on every card — so they live in a nowrap group
-   and shrink (ellipsis on the label) rather than stacking. "+1 tentativa" is allowed
-   to wrap below them, since it only exists in one column. */
+/* The card's button row: "Ligar" and "Notas", the two things the caller reaches for on
+   every card. They are one inseparable pair, so they live in a nowrap group and shrink
+   (ellipsis on the label) rather than stacking. The row is always last on the card —
+   in "Não atendeu", "+1 tentativa" sits ABOVE it, next to the attempt badge, because
+   that pair is about the call being made and this pair is how you make it. */
 .board-card-actions {
   display: flex;
   align-items: center;

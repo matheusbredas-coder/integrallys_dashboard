@@ -25,6 +25,14 @@ export type FormLeadRow = {
   call_attempts: number;
   last_call_at: string | null;
   next_call_at: string | null;
+  /**
+   * When each call was placed, oldest first (migration 030). One entry per attempt,
+   * so it grows alongside `call_attempts` and empties when the lead is restarted.
+   * Read it through features/form-leads/call-log.ts, never directly: the column is
+   * permissive jsonb, and rows worked before 030 hold a shorter history than their
+   * attempt count.
+   */
+  call_log: string[];
 };
 
 /**

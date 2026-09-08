@@ -1,6 +1,7 @@
 import "server-only";
 import { postSlackMessage, type SlackBlock } from "@/lib/slack";
 import { formatDateTimeBrt } from "@/lib/format";
+import { leadNeighbourhood, leadWeightGoal } from "./form-answers";
 import type { MappedLead } from "./mapping";
 
 // Slack alert for a newly ingested Meta Instant Form lead. Only the ingest route calls
@@ -30,12 +31,16 @@ export function buildNewLeadBlocks(lead: MappedLead): {
       text: { type: "plain_text", text: "Novo lead — Meta Ads", emoji: false },
     },
     {
+      // Campaign and form name were here until 08/09/2026 and were dropped on purpose:
+      // there is one campaign and one form, so both said the same thing on every alert.
+      // The two questions the new form asks are what actually decide whether the caller
+      // picks this lead up first — near the clinic, and how much she wants to lose.
       type: "section",
       fields: [
         field("Nome", lead.name),
         field("Telefone", lead.phone),
-        field("Campanha", lead.campaign),
-        field("Formulário", lead.form_name),
+        field("Bairro", leadNeighbourhood(lead.raw)),
+        field("Quer perder", leadWeightGoal(lead.raw)),
       ],
     },
     {

@@ -52,6 +52,14 @@ Apply these in order in the Supabase SQL editor (Dashboard → SQL Editor), or v
     added with `alter ... if not exists`, so a database that already has the block-only version just
     gains the column. See `docs/agenda-blocks.md`.
 
+30. `030_form_leads_call_log.sql` — adds `form_leads.call_log`, the timestamp of every call the
+    caller placed (jsonb array of ISO strings, oldest first). Migration 028's `last_call_at` holds
+    only the most recent one, so the notes drawer could not show when the 1st call happened once a
+    2nd was made. **Must be applied before deploying the call history** — `updateFormLeadBoard`
+    writes this column and fails without it, the same Supabase-does-not-auto-migrate trap as 026/027.
+    Existing rows backfill as an empty history and fall back to `last_call_at` on screen.
+    **Depends on 028.** See `docs/marketing-board.md`.
+
 After applying 001/002, sanity-check:
 ```sql
 select count(*) n, sum(receita_total) revenue, sum(numero_vendas) sales from public.clientes_view;
