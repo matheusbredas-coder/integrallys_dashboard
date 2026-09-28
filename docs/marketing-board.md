@@ -61,16 +61,27 @@ com o visual do app. Foi por isso que saíram, em 02/09/2026.
 Quem move um card por engano para "Removido" e o traz de volta perde a nota do mesmo jeito, e
 isso é aceito: o comportamento pedido foi "voltou para A ligar, recomeça".
 
-## "Removido" e "Qualificado" calam o bot
+## O bot só trabalha "A ligar" e "Não atendeu"
 
-Uma lead nessas duas colunas não recebe **nada** do bot: nem a mensagem de abertura, nem a
-sequência de follow-up, nem resposta se ela escrever (a mensagem dela fica gravada, o bot só
-não responde). Arrastar o card para outra coluna devolve a lead ao bot, sem nada para desfazer.
+Essas duas colunas são as únicas em que o bot fala com a lead — abertura, follow-up e resposta.
+Em **Retorno marcado**, **Qualificado**, **Agendado** e **Removido** ele fica **mudo**: nada de
+abertura, nada de follow-up, e nem resposta se ela escrever (a mensagem dela fica gravada, o bot
+só não responde). Arrastar o card de volta para "A ligar" ou "Não atendeu" devolve a lead ao bot,
+sem nada para desfazer.
 
-Quem faz isso é o **bot lendo** `board_column` na hora de enviar (`BOT_SILENCING_COLUMNS` em
+É uma lista de permissão, não de bloqueio: coluna nova que alguém criar no quadro nasce muda, em
+vez de começar a receber mensagem de venda sem ninguém decidir isso.
+
+Quem faz a regra é o **bot lendo** `board_column` na hora de enviar (`BOT_ACTIVE_COLUMNS` em
 `Lead Qualifier Bot/src/booking/formLeads.ts`) — o quadro continua não escrevendo nada fora de
-`form_leads`, então a regra acima vale igual. Se a leitura falhar, o follow-up não envia
-(falha fechada) e a resposta sai normalmente (falha aberta).
+`form_leads`, então a regra do topo deste documento vale igual.
+
+Os dois casos de dúvida, resolvidos em lados opostos de propósito:
+
+| situação | follow-up (o bot puxa conversa) | resposta (ela escreveu) |
+|---|---|---|
+| leitura do quadro falhou | não envia | responde |
+| card apagado / não existe | não envia | responde |
 
 ## O quadro e a tabela podem discordar — de propósito
 
