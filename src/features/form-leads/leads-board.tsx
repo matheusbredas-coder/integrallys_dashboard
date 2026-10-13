@@ -66,6 +66,7 @@ import {
   type FormLeadRow,
 } from "./types";
 import { LeadNotesDrawer } from "./lead-notes-drawer";
+import { WHATSAPP_AD_SOURCE } from "./whatsapp-ad";
 import { BoardDialog, type BoardDialogRequest } from "./board-dialog";
 
 /**
@@ -797,6 +798,26 @@ function BoardCard({
       <div className="muted" style={{ fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
         {formatPhoneBr(row.phone)}
       </div>
+
+      {/* She came from the WhatsApp ad and already wrote to the clinic — the caller should
+          know before dialling. The bot never talks to these (whatsapp-ad.ts). */}
+      {row.source === WHATSAPP_AD_SOURCE && (
+        <span
+          title={row.campaign ? `Anúncio: ${row.campaign}` : undefined}
+          style={{
+            alignSelf: "flex-start",
+            fontSize: 10.5,
+            fontWeight: 700,
+            color: "#25d366",
+            background: "color-mix(in srgb, #25d366 14%, transparent)",
+            border: "1px solid color-mix(in srgb, #25d366 32%, transparent)",
+            borderRadius: 6,
+            padding: "1px 6px",
+          }}
+        >
+          veio pelo WhatsApp
+        </span>
+      )}
 
       {/* Which try she is on, and the button that adds the next one — the two things
           that belong together, on their own line above "Ligar"/"Notas".
