@@ -43,11 +43,14 @@ export function WhatsAppPairingCard({ initialState }: { initialState: Connection
 
   function generate(withNumber: boolean) {
     setError(null);
+    setResult(null);
     startTransition(async () => {
       const res = await generatePairing(withNumber ? CLINIC_PHONE : "");
       if ("error" in res) { setError(res.error); return; }
-      if (withNumber && !res.pairingCode && res.state !== "open") {
-        setError("A Evolution não gerou o código de pareamento. Tente de novo ou use o QR code.");
+      if (res.state !== "open" && !(withNumber ? res.pairingCode : res.qr)) {
+        setError(withNumber
+          ? "A Evolution não gerou o código de pareamento. Tente de novo ou use o QR code."
+          : "A Evolution não gerou o QR code. Tente de novo em alguns segundos.");
       }
       setState(res.state);
       setResult(res.state === "open" ? null : res);
@@ -105,7 +108,7 @@ export function WhatsAppPairingCard({ initialState }: { initialState: Connection
             </div>
           )}
 
-          {result?.qr && !result.pairingCode && (
+          {result?.qr && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
               {/* eslint-disable-next-line @next/next/no-img-element -- data: URL from Evolution */}
               <img src={result.qr} alt="QR code para conectar o WhatsApp" width={240} height={240} style={{ background: "#fff", borderRadius: 12, padding: 8 }} />

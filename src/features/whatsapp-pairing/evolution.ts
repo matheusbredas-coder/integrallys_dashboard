@@ -71,21 +71,32 @@ export async function fetchConnectionState(): Promise<ConnectionState> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Returns ONLY what was asked for: the pairing code when `phone` is given, the QR
+ * otherwise. Evolution is inconsistent here — after a ?number= request it keeps
+ * sending a pairing code on plain QR requests too, and right after a session
+ * restart it can answer with neither — so keep asking for a few seconds.
+ */
 export async function requestPairing(phone?: string): Promise<PairingResult> {
   const q = phone ? `?number=${phone}` : "";
-  const first = pairingFrom(await call(`/instance/connect/{instance}${q}`));
-  if (!phone || first.pairingCode || first.state === "open") return first;
+  const wanted = (r: PairingResult) => (phone ? r.pairingCode : r.qr);
+  const only = (r: PairingResult): PairingResult =>
+    phone ? { state: r.state, pairingCode: r.pairingCode } : { state: r.state, qr: r.qr };
+
+  let last = pairingFrom(await call(`/instance/connect/{instance}${q}`));
+  if (wanted(last) || last.state === "open") return only(last);
 
   // A QR session already running ignores ?number= and never yields a pairing
   // code. End it and start over — but only while unlinked, so this can never
   // drop a working connection.
-  if ((await fetchConnectionState()) === "open") return { state: "open" };
-  await call("/instance/logout/{instance}", "DELETE").catch((e) => console.warn("[whatsapp-pairing] logout", e));
-  let last = first;
-  for (let i = 0; i < 3; i++) {
+  if (phone) {
+    if ((await fetchConnectionState()) === "open") return { state: "open" };
+    await call("/instance/logout/{instance}", "DELETE").catch((e) => console.warn("[whatsapp-pairing] logout", e));
+  }
+  for (let i = 0; i < 4; i++) {
     await sleep(2000);
     last = pairingFrom(await call(`/instance/connect/{instance}${q}`));
-    if (last.pairingCode || last.state === "open") return last;
+    if (wanted(last) || last.state === "open") return only(last);
   }
-  return last;
+  return only(last);
 }
