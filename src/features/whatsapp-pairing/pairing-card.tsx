@@ -46,6 +46,9 @@ export function WhatsAppPairingCard({ initialState }: { initialState: Connection
     startTransition(async () => {
       const res = await generatePairing(withNumber ? CLINIC_PHONE : "");
       if ("error" in res) { setError(res.error); return; }
+      if (withNumber && !res.pairingCode && res.state !== "open") {
+        setError("A Evolution não gerou o código de pareamento. Tente de novo ou use o QR code.");
+      }
       setState(res.state);
       setResult(res.state === "open" ? null : res);
     });

@@ -5,6 +5,7 @@ import "server-only";
  * unlinks it. Only two Evolution calls, both on the SAME instance:
  *   GET /instance/connectionState/<instance>  → is it linked?
  *   GET /instance/connect/<instance>[?number=] → QR code + pairing code
+ *   DELETE /instance/logout/<instance>         → ends a stale QR session (only when NOT open)
  * Never delete/recreate the instance to "fix" it: that regenerates its token and
  * wipes its webhook, and the bot goes deaf while Evolution still says "connected".
  *
@@ -51,10 +52,11 @@ function config() {
   return { base, key, instance: encodeURIComponent(instance) };
 }
 
-async function call(path: string): Promise<unknown> {
+async function call(path: string, method: "GET" | "DELETE" = "GET"): Promise<unknown> {
   const c = config();
   if (!c) throw new Error("Evolution não configurada (EVOLUTION_BASE_URL / EVOLUTION_API_KEY / EVOLUTION_INSTANCE).");
   const res = await fetch(`${c.base}${path.replace("{instance}", c.instance)}`, {
+    method,
     headers: { apikey: c.key },
     cache: "no-store",
     signal: AbortSignal.timeout(20_000),
@@ -67,7 +69,23 @@ export async function fetchConnectionState(): Promise<ConnectionState> {
   return stateFrom(await call("/instance/connectionState/{instance}"));
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function requestPairing(phone?: string): Promise<PairingResult> {
   const q = phone ? `?number=${phone}` : "";
-  return pairingFrom(await call(`/instance/connect/{instance}${q}`));
+  const first = pairingFrom(await call(`/instance/connect/{instance}${q}`));
+  if (!phone || first.pairingCode || first.state === "open") return first;
+
+  // A QR session already running ignores ?number= and never yields a pairing
+  // code. End it and start over — but only while unlinked, so this can never
+  // drop a working connection.
+  if ((await fetchConnectionState()) === "open") return { state: "open" };
+  await call("/instance/logout/{instance}", "DELETE").catch((e) => console.warn("[whatsapp-pairing] logout", e));
+  let last = first;
+  for (let i = 0; i < 3; i++) {
+    await sleep(2000);
+    last = pairingFrom(await call(`/instance/connect/{instance}${q}`));
+    if (last.pairingCode || last.state === "open") return last;
+  }
+  return last;
 }
