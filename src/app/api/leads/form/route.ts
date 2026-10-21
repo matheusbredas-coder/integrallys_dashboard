@@ -4,9 +4,10 @@ import {
   coerceIngestFields,
   mapSheetFields,
   resolveExternalId,
+  resolveProtocolo,
+  resolveSource,
 } from "@/features/form-leads/mapping";
 import { notifyNewFormLead } from "@/features/form-leads/notify";
-import { enqueueStageEvent } from "@/features/capi/queue";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -120,7 +121,8 @@ export async function POST(req: Request) {
     .from("form_leads")
     .upsert(
       {
-        source: "meta_instant_form",
+        source: resolveSource(body),
+        protocolo: resolveProtocolo(body),
         external_id: resolveExternalId(lead.external_id, body),
         // Only the retired Sheets poller ever set this; Ottokit leads leave it null.
         sheet_row: typeof body.row === "number" ? body.row : null,
@@ -154,17 +156,22 @@ export async function POST(req: Request) {
 
   revalidateTag("form-leads", { expire: 0 });
 
-  // The lead's opening stage, reported to Meta's Conversions API. Their CRM integration guide
-  // requires a trigger for every funnel stage "incluindo o estágio inicial do lead" — without
-  // it Meta sees qualified and won leads with no denominator to read them against.
+  // NO opening CAPI event here, on purpose.
   //
-  // Only on a genuine insert, never on a duplicate: the `if (!inserted)` above has already
-  // returned, and `capi_events` has its own unique index behind that. Best-effort like the
-  // Slack call below — the lead is recorded either way, and the cron owns the retry.
-  const capi = await enqueueStageEvent(inserted, "novo");
-  if (capi.queued && capi.reason) {
-    console.warn(`[form-leads] lead ${inserted}: CAPI Lead event queued (${capi.reason})`);
-  }
+  // Until 10/09/2026 this reported the lead's first stage to Meta as a `Lead` event, because
+  // their CRM guide asks for a trigger on every funnel stage "incluindo o estágio inicial do
+  // lead". The problem is that Meta counts that event in the dataset ON TOP OF the Instant
+  // Form submission it was built from, so every lead was reported twice: the form
+  // "Emagrece & Firma 5Q" had 2 real submissions and the dashboard read 4.
+  //
+  // Nothing downstream depended on it. The campaign optimizes on Schedule and Purchase, and
+  // the funnel events (LeadContatado, LeadRespondeu, LeadQualificado, Schedule, Purchase)
+  // still fire from /api/leads/form/stage and updateFormLeadStage — a lead that moves is
+  // still reported, which is the part Meta actually trains on.
+  //
+  // 23 of these had already reached Meta when this was removed, and they are permanent: the
+  // Conversions API has no delete. So re-add this only with a way to stop Meta counting it a
+  // second time, and read Events Manager before AND after the change.
 
   // Slack is best-effort and must never fail this request: the lead is already safely
   // recorded, and a non-2xx would only make the caller resend a lead we have.

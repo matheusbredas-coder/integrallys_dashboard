@@ -364,22 +364,10 @@ export async function commitFormLeadsCsv(
     insertedIds = (data ?? []).map((d) => d.id as string);
   }
 
-  // Same best-effort stance as updateFormLeadStage: the rows are already committed, and a
-  // Meta problem must not turn a successful import into an error the user sees. Reported in
-  // concurrent chunks (not one row at a time) so a large import doesn't risk running past the
-  // server action's duration limit.
-  const CAPI_CHUNK_SIZE = 10;
-  for (let i = 0; i < insertedIds.length; i += CAPI_CHUNK_SIZE) {
-    const chunk = insertedIds.slice(i, i + CAPI_CHUNK_SIZE);
-    await Promise.all(
-      chunk.map(async (id) => {
-        const capi = await enqueueStageEvent(id, "novo");
-        if (capi.queued && capi.reason) {
-          console.warn(`[form-leads] csv import lead ${id}: CAPI event queued (${capi.reason})`);
-        }
-      })
-    );
-  }
+  // NOTE: no enqueueStageEvent here, on purpose — an imported lead reports no opening `Lead`
+  // event to Meta, for the same reason the n8n ingest stopped reporting one. See the long
+  // comment in app/api/leads/form/route.ts. A CSV import is the worst case for it: it lands
+  // many leads at once, so it would have doubled the dashboard a whole batch at a time.
 
   if (insertedIds.length > 0) revalidateTag("form-leads", { expire: 0 });
 

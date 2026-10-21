@@ -261,6 +261,23 @@ Outras coisas que já estão resolvidas no arquivo e que é fácil quebrar sem q
   vez, e cada refresh re-roda o `Promise.all` inteiro de `marketing/page.tsx`) e mataria o
   arrasto seguinte. Por isso o refresh é único e com debounce de 1,5s.
 
+## Leads qualificados (a lista embaixo do quadro)
+
+Logo abaixo do quadro fica a lista **Leads qualificados**: todas as leads que estão na coluna
+"Qualificado" do quadro (`board_column = 'qualificado'`), **inclusive as que já saíram do quadro**
+pelo corte de 14 dias (`TERMINAL_VISIBLE_DAYS`). É para isso que ela existe.
+
+- Conta só a coluna do quadro. A etapa `qualificado` da tabela (a do funil, que vai para o Meta)
+  não entra — veja "O quadro e a tabela podem discordar".
+- O filtro de data é o **dia em que a lead preencheu o formulário** (`submitted_at`, ou
+  `created_at` quando vazio), no dia de São Paulo. "Todos" tira o filtro. O banco não guarda
+  *quando* uma lead foi qualificada, por isso o filtro não é por essa data.
+- É só consulta: não arrasta nem move nada. Tem "Ligar" e "Notas" (a mesma gaveta do quadro).
+  Para tirar uma lead de "Qualificado", é pelo quadro.
+- Reusa as linhas que a página já busca; nenhuma consulta nova.
+
+Lógica em `formDateFor` / `qualifiedLeads` (`board-columns.ts`), tela em `qualified-leads.tsx`.
+
 ## Arquivos
 
 - `db/migrations/028_form_leads_call_tracking.sql` — as quatro colunas
@@ -269,6 +286,7 @@ Outras coisas que já estão resolvidas no arquivo e que é fácil quebrar sem q
 - `src/features/form-leads/board-columns.ts` — em que coluna e em que ordem (puro)
 - `src/features/form-leads/actions.ts` — `updateFormLeadBoard`, o único escritor
 - `src/features/form-leads/leads-board.tsx` — o quadro
+- `src/features/form-leads/qualified-leads.tsx` — a lista de qualificadas embaixo dele
 - `src/app/(app)/marketing/page.tsx` — onde ele entra, reusando as linhas da tabela
 
 ## Nota de lado: a trava anti-retrocesso

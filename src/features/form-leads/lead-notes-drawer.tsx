@@ -101,16 +101,16 @@ export function LeadNotesDrawer({
       <aside
         role="dialog"
         aria-label={`Notas de ${row.name ?? "lead"}`}
-        // Fixed height with the notes section taking the slack, rather than a scrolling
-        // box: it keeps Salvar at the bottom on any screen without a sticky footer that
-        // would paint over the textarea.
+        // Fixed height with the notes section taking the slack, so Salvar sits at the
+        // bottom when everything fits. When it doesn't (a short screen, a long call
+        // history) the panel scrolls instead of cutting off the textarea and Salvar.
         style={{
           position: "fixed", top: 0, right: 0, bottom: 0, width: 440, maxWidth: "92vw",
           background: "var(--panel-to)", borderLeft: "1px solid var(--line)", zIndex: 41,
-          padding: 26, display: "flex", flexDirection: "column", gap: 18, overflow: "hidden",
+          padding: 26, display: "flex", flexDirection: "column", gap: 18, overflowY: "auto",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexShrink: 0 }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-.4px", margin: 0 }}>
             {row.name ?? "Sem nome"}
           </h2>
@@ -123,7 +123,7 @@ export function LeadNotesDrawer({
           </button>
         </div>
 
-        <div style={{ display: "grid", gap: 2 }}>
+        <div style={{ display: "grid", gap: 2, flexShrink: 0 }}>
           <Field label="Telefone" value={formatPhoneBr(row.phone)} />
           <Field label="E-mail" value={row.email ?? "—"} />
           {neighbourhood && <Field label="Bairro" value={neighbourhood} />}
@@ -173,7 +173,7 @@ export function LeadNotesDrawer({
           </div>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minHeight: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minHeight: 220 }}>
           <label htmlFor="lead-notes" style={{ fontSize: 13, fontWeight: 700 }}>
             Observações
           </label>

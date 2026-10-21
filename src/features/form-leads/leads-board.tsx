@@ -81,7 +81,7 @@ import { BoardDialog, type BoardDialogRequest } from "./board-dialog";
  * calmest on the two columns that mean the call went well, and only "Removido" still
  * borrows from STAGE_COLORS.
  */
-const COLUMN_ACCENT: Record<BoardColumnKey, string> = {
+export const COLUMN_ACCENT: Record<BoardColumnKey, string> = {
   a_ligar: "#e0af68",
   nao_atendeu: "#e2875a",
   retorno: "#b48ead",
@@ -97,7 +97,7 @@ const COLUMN_ACCENT: Record<BoardColumnKey, string> = {
  * Drawn inline, in the Lucide idiom (24 viewBox, 1.8 stroke, round caps), because the
  * app carries no icon package and an emoji is not an icon.
  */
-const COLUMN_ICON: Record<BoardColumnKey, React.ReactNode> = {
+export const COLUMN_ICON: Record<BoardColumnKey, React.ReactNode> = {
   a_ligar: (
     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.2 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z" />
   ),
@@ -138,7 +138,7 @@ const COLUMN_ICON: Record<BoardColumnKey, React.ReactNode> = {
 };
 
 /** aria-hidden throughout: every icon here sits next to the word it illustrates. */
-function Icon({ size = 15, children }: { size?: number; children: React.ReactNode }) {
+export function Icon({ size = 15, children }: { size?: number; children: React.ReactNode }) {
   return (
     <svg
       width={size}
@@ -158,7 +158,7 @@ function Icon({ size = 15, children }: { size?: number; children: React.ReactNod
 }
 
 /** Cards past this fold behind a "ver mais" so a column never needs its own scrollbar. */
-const CARDS_BEFORE_FOLD = 15;
+export const CARDS_BEFORE_FOLD = 8;
 
 const ORDINAL = ["", "1ª", "2ª", "3ª"];
 

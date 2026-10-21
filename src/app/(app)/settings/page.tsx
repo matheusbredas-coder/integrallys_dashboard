@@ -1,19 +1,21 @@
-import { getGoals } from "@/features/settings/data";
-import { GoalsForm } from "@/features/settings/goals-form";
-import { AttendanceImportForm } from "@/features/attendance/import-form";
+import { WhatsAppPairingCard } from "@/features/whatsapp-pairing/pairing-card";
+import { fetchConnectionState, type ConnectionState } from "@/features/whatsapp-pairing/evolution";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/app/(app)/signout/actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const goals = await getGoals();
+  const whatsapp: ConnectionState = await fetchConnectionState().catch((e) => {
+    console.error("[whatsapp-pairing] state failed", e);
+    return "unknown" as const;
+  });
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 720 }}>
       <header>
         <h1 style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-.6px" }}>Configurações</h1>
         <p className="muted" style={{ marginTop: 6, fontSize: 14 }}>
-          Defina as metas usadas nos medidores da Visão Geral e importe o relatório de atendimentos.
+          WhatsApp da clínica, aparência e conta.
         </p>
       </header>
 
@@ -28,8 +30,7 @@ export default async function SettingsPage() {
         </div>
       </section>
 
-      <GoalsForm goals={goals} />
-      <AttendanceImportForm />
+      <WhatsAppPairingCard initialState={whatsapp} />
 
       <section className="card" style={{ padding: "24px 28px" }}>
         <div style={{ marginBottom: 16 }}>

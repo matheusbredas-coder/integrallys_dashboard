@@ -102,7 +102,7 @@ describe("commitFormLeadsCsv", () => {
     upsertSelect.mockResolvedValue({ data: [{ id: "row-1" }], error: null });
   });
 
-  it("inserts only the new rows and reports each one to Meta", async () => {
+  it("inserts only the new rows and reports nothing to Meta", async () => {
     const res = await commitFormLeadsCsv(CSV);
     expect(res).toEqual({ ok: true, inserted: 1, duplicate: 2, invalid: 1 });
 
@@ -113,8 +113,10 @@ describe("commitFormLeadsCsv", () => {
     for (const row of rows) expect(row).not.toHaveProperty("stage");
     expect(options).toEqual({ onConflict: "external_id", ignoreDuplicates: true });
 
-    expect(enqueueStageEvent).toHaveBeenCalledTimes(1);
-    expect(enqueueStageEvent).toHaveBeenCalledWith("row-1", "novo");
+    // No opening `Lead` event: Meta counts it on top of the Instant Form submission the row
+    // came from, so reporting it here made every imported lead show up twice. See the comment
+    // in app/api/leads/form/route.ts.
+    expect(enqueueStageEvent).not.toHaveBeenCalled();
     expect(revalidateTag).toHaveBeenCalledWith("form-leads", { expire: 0 });
   });
 

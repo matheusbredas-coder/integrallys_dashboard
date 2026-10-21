@@ -104,3 +104,40 @@ export function groupForBoard(
   for (const bucket of grouped.values()) bucket.sort(compareForBoard);
   return grouped;
 }
+
+/** São Paulo is UTC-3 all year since 2019 — the same assumption as call-cadence.ts. */
+const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * The day, in São Paulo, the lead filled the form ("YYYY-MM-DD"). `submitted_at` is
+ * Meta's own timestamp; rows that came in without one fall back to when we stored them.
+ * Null only for a timestamp that does not parse.
+ */
+export function formDateFor(row: FormLeadRow): string | null {
+  for (const iso of [row.submitted_at, row.created_at]) {
+    if (!iso) continue;
+    const t = new Date(iso).getTime();
+    if (!Number.isNaN(t)) return new Date(t - BRT_OFFSET_MS).toISOString().slice(0, 10);
+  }
+  return null;
+}
+
+/**
+ * Every lead sitting in the board's "Qualificado" column, for the list under the board.
+ *
+ * Unlike groupForBoard there is no TERMINAL_VISIBLE_DAYS cut — the whole point of the
+ * list is to keep the ones that have already dropped off the board. Only the board
+ * column counts; `stage='qualificado'` in the table is a different thing (see
+ * BOARD_COLUMNS in types.ts). `day` narrows it to leads whose form arrived that day.
+ * Newest form first.
+ */
+export function qualifiedLeads(rows: FormLeadRow[], day: string | null): FormLeadRow[] {
+  const keyed: { row: FormLeadRow; at: string }[] = [];
+  for (const row of rows) {
+    if (boardColumnFor(row) !== "qualificado") continue;
+    if (day && formDateFor(row) !== day) continue;
+    keyed.push({ row, at: row.submitted_at ?? row.created_at ?? "" });
+  }
+  keyed.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+  return keyed.map((k) => k.row);
+}

@@ -779,6 +779,42 @@ html, body {
   outline-offset: 2px;
 }
 
+/* ----- Leads qualificados (a lista embaixo do quadro) -----
+   Same cards as the board, in a wrapping grid instead of a column, and nothing to
+   drag — so the grab cursor goes. */
+.qualified { padding: 22px; display: flex; flex-direction: column; gap: 16px; }
+.qualified-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.qualified-filter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.qualified-filter .board-chip { font-size: 12px; padding: 6px 12px; }
+.qualified-filter .board-chip[data-active="true"] {
+  color: var(--txt);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.qualified-date {
+  font: inherit;
+  font-size: 12px;
+  color: var(--txt);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 8px;
+  color-scheme: light dark;
+}
+.qualified-date:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.qualified-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.board-card[data-static="true"] { cursor: default; }
+
 @media (prefers-reduced-motion: reduce) {
   .board-col, .board-card, .board-chip, .board-more { transition: none; }
   .board-move-bar { animation: none; }

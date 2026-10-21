@@ -6,6 +6,9 @@ import {
   normalizeHeader,
   parseSubmittedAt,
   resolveExternalId,
+  resolveProtocolo,
+  resolveSource,
+  withCountryCode,
 } from "./mapping";
 
 // The column set Meta's Lead Ads -> Sheets integration produces for a standard form.
@@ -84,7 +87,10 @@ describe("mapSheetFields", () => {
       Formulário: "Lead Botox",
     });
     expect(m.name).toBe("João Lima");
-    expect(m.phone).toBe("41988887777");
+    // Chega local (11 dígitos) e é gravado com o código do país: é assim que TODAS as 39
+    // linhas de form_leads em produção estão (12-13 dígitos, sempre começando por 55), e é
+    // o que `buildWaMeUrl` precisa. Ver `withCountryCode`.
+    expect(m.phone).toBe("5541988887777");
     expect(m.email).toBe("joao@example.com");
     expect(m.campaign).toBe("Botox Agosto");
     expect(m.form_name).toBe("Lead Botox");
@@ -320,5 +326,99 @@ describe("coerceIngestFields + mapSheetFields (the ingest route's path)", () => 
   it("still maps the retired Sheets shape unchanged", () => {
     const m = mapSheetFields(coerceIngestFields({ row: 12, fields: metaRow }));
     expect(m).toEqual(mapSheetFields(metaRow));
+  });
+});
+
+describe("resolveSource", () => {
+  it("usa a origem do site quando ela vem no corpo", () => {
+    expect(resolveSource({ source: "site_form" })).toBe("site_form");
+  });
+
+  // O n8n existente não manda `source` nenhum; ele tem que continuar caindo no Meta.
+  it("sem origem no corpo, continua sendo lead do Meta", () => {
+    expect(resolveSource({})).toBe("meta_instant_form");
+    expect(resolveSource(null)).toBe("meta_instant_form");
+  });
+
+  // Uma origem digitada errada viraria um terceiro grupo que nenhum relatório filtra —
+  // melhor cair no padrão do que inventar uma categoria.
+  it("origem desconhecida cai no padrão", () => {
+    expect(resolveSource({ source: "sitio_form" })).toBe("meta_instant_form");
+    expect(resolveSource({ source: 42 })).toBe("meta_instant_form");
+  });
+});
+
+describe("resolveProtocolo", () => {
+  it("usa o protocolo enviado", () => {
+    expect(resolveProtocolo({ protocolo: "rejuvenescimento-facial" })).toBe("rejuvenescimento-facial");
+  });
+
+  // A coluna é NOT NULL com default 'emagrecimento' (migração 022); devolver "" gravaria
+  // string vazia em vez de cair no default.
+  it("vazio ou ausente vira emagrecimento", () => {
+    expect(resolveProtocolo({})).toBe("emagrecimento");
+    expect(resolveProtocolo({ protocolo: "   " })).toBe("emagrecimento");
+  });
+
+  it("corta um valor absurdamente longo", () => {
+    expect(resolveProtocolo({ protocolo: "x".repeat(500) })).toHaveLength(80);
+  });
+});
+
+// O corpo EXATO que o formulário do site envia (capturado do navegador em 08/09/2026,
+// src/lib/lead.ts do repositório integrallys-estética-avançada). Os dois repositórios são
+// separados e nada os compila junto: este teste é o contrato entre eles. Se um apelido em
+// ALIASES for renomeado, o campo passa a cair só em `raw` — sem erro, com a coluna vazia
+// no quadro de ligações — e é isso que este teste impede.
+describe("contrato com o formulário do site", () => {
+  const sitePayload = {
+    source: "site_form",
+    protocolo: "rejuvenescimento-facial",
+    "Nome completo": "Maria Teste",
+    WhatsApp: "27999887766",
+    "Nome do formulário": "Site — formulário de contato",
+    "Protocolo de interesse": "rejuvenescimento-facial",
+    Mensagem: "Quero saber mais",
+    submitted_at: "2026-09-08T16:40:30.153Z",
+  };
+
+  it("nome e telefone caem nas colunas certas", () => {
+    const lead = mapSheetFields(coerceIngestFields(sitePayload));
+    expect(lead.name).toBe("Maria Teste");
+    expect(lead.phone).toBe("5527999887766");
+    expect(lead.form_name).toBe("Site — formulário de contato");
+  });
+
+  it("a origem e o protocolo são lidos do corpo", () => {
+    expect(resolveSource(sitePayload)).toBe("site_form");
+    expect(resolveProtocolo(sitePayload)).toBe("rejuvenescimento-facial");
+  });
+
+  it("a mensagem não se perde, mesmo sem coluna própria", () => {
+    const lead = mapSheetFields(coerceIngestFields(sitePayload));
+    expect(lead.raw["Mensagem"]).toBe("Quero saber mais");
+  });
+});
+
+describe("withCountryCode", () => {
+  it("prefixa o país num número local", () => {
+    expect(withCountryCode("27999887766")).toBe("5527999887766"); // celular
+    expect(withCountryCode("2733334444")).toBe("552733334444"); // fixo
+  });
+
+  it("não duplica o país num número que já veio completo", () => {
+    expect(withCountryCode("5527999887766")).toBe("5527999887766");
+  });
+
+  // Armadilha: 55 também é o DDD do Rio Grande do Sul. Um celular de 11 dígitos que começa
+  // com 55 ainda é um número local e PRECISA do prefixo — por isso a regra é o comprimento,
+  // nunca o "começa com 55".
+  it("trata o DDD 55 como DDD, não como código de país", () => {
+    expect(withCountryCode("55999887766")).toBe("5555999887766");
+  });
+
+  it("deixa passar o que não reconhece", () => {
+    expect(withCountryCode("")).toBe("");
+    expect(withCountryCode("123")).toBe("123");
   });
 });

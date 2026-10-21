@@ -220,11 +220,61 @@ export function coerceIngestFields(body: unknown): Record<string, unknown> {
  * Null when there's neither — the column stays nullable and Postgres treats NULLs as distinct,
  * so such a lead is simply never deduped. Only a hand-rolled POST reaches that case.
  */
+/**
+ * O telefone como o resto do sistema espera lê-lo: só dígitos e SEMPRE com o código do
+ * país. É o formato que a migração 021 documenta e do qual dependem `buildWaMeUrl`
+ * (`wa.me/<numero>`) e o casamento de leads feito pelo bot.
+ *
+ * As leads do Meta já chegam com o +55, então a maioria passa intacta. O formulário do
+ * site pede "(27) 00000-0000" — um número local — e sem este passo ele seria gravado com
+ * 11 dígitos, o que não quebra nenhuma tela (o formatador aguenta) mas produz um
+ * `wa.me/27999887766` inválido: o botão "abrir conversa" abriria um número inexistente.
+ *
+ * A regra é pelo comprimento, e não por "começa com 55": um celular de 11 dígitos no DDD
+ * 55 (Rio Grande do Sul) começa com 55 e MESMO ASSIM precisa do prefixo.
+ *   10 dígitos = fixo com DDD, 11 = celular com DDD  -> falta o país, prefixa
+ *   12-13 dígitos já iniciados por 55                -> já está completo, não mexe
+ * Qualquer outro comprimento é devolvido como veio, para um número estrangeiro ou
+ * digitado errado aparecer errado em vez de ser silenciosamente remendado.
+ */
+export function withCountryCode(digits: string): string {
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
 export function resolveExternalId(mapped: string | null, body: unknown): string | null {
   if (mapped) return mapped;
   if (!isPlainObject(body)) return null;
   const messageId = typeof body.message_id === "string" ? body.message_id.trim() : "";
   return messageId === "" ? null : `gmail:${messageId}`;
+}
+
+/**
+ * Where the lead came from. Defaults to the Meta Instant Form so the existing n8n workflow
+ * keeps working untouched.
+ *
+ * The site's own contact form posts `source: "site_form"`: without it a visitor who typed
+ * their number into the site would be indistinguishable from a paid Meta lead, and every
+ * report that splits cost by origin would credit the ads for it.
+ *
+ * Allow-listed rather than free text — this is a machine-to-machine field, and a typo'd
+ * value would quietly create a third "origin" nobody is filtering on.
+ */
+const SOURCES = new Set(["meta_instant_form", "site_form"]);
+
+export function resolveSource(body: unknown): string {
+  const raw = isPlainObject(body) && typeof body.source === "string" ? body.source.trim() : "";
+  return SOURCES.has(raw) ? raw : "meta_instant_form";
+}
+
+/**
+ * The column is NOT NULL with default 'emagrecimento' (migration 022), which is right for
+ * the Meta funnel — every lead there comes from it. The site offers two protocols, so it
+ * says which one; anything unrecognized falls back to the default rather than 500ing.
+ */
+export function resolveProtocolo(body: unknown): string {
+  const raw = isPlainObject(body) && typeof body.protocolo === "string" ? body.protocolo.trim() : "";
+  return raw === "" ? "emagrecimento" : raw.slice(0, 80);
 }
 
 export function mapSheetFields(fields: Record<string, unknown>): MappedLead {
@@ -247,7 +297,7 @@ export function mapSheetFields(fields: Record<string, unknown>): MappedLead {
   return {
     external_id: pick(byNormalized, ALIASES.external_id),
     name: pick(byNormalized, ALIASES.name),
-    phone: phone ? normalizePhone(phone) || null : null,
+    phone: phone ? withCountryCode(normalizePhone(phone)) || null : null,
     email: pick(byNormalized, ALIASES.email)?.toLowerCase() ?? null,
     campaign: pick(byNormalized, ALIASES.campaign),
     form_name: pick(byNormalized, ALIASES.form_name),

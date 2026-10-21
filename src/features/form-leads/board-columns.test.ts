@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { boardColumnFor, compareForBoard, groupForBoard, visibleOnBoard } from "./board-columns";
+import {
+  boardColumnFor,
+  compareForBoard,
+  formDateFor,
+  groupForBoard,
+  qualifiedLeads,
+  visibleOnBoard,
+} from "./board-columns";
 import type { BoardColumn, FormLeadRow, FormLeadStage } from "./types";
 
 function lead(over: Partial<FormLeadRow> = {}): FormLeadRow {
@@ -141,5 +148,45 @@ describe("groupForBoard", () => {
     expect(grouped.get("a_ligar")?.map((r) => r.id)).toEqual(["quente", "novo1"]);
     expect(grouped.get("nao_atendeu")?.map((r) => r.id)).toEqual(["tentada"]);
     expect(grouped.get("agendado")).toBeUndefined();
+  });
+});
+
+describe("formDateFor", () => {
+  it("is the São Paulo day of the form, not the UTC one", () => {
+    // 22h in São Paulo on the 14th is already the 15th in UTC.
+    expect(formDateFor(lead({ submitted_at: "2026-09-15T01:00:00Z" }))).toBe("2026-09-14");
+    expect(formDateFor(lead({ submitted_at: "2026-09-15T03:00:00Z" }))).toBe("2026-09-15");
+  });
+
+  it("falls back to when the row was created", () => {
+    expect(formDateFor(lead({ submitted_at: null, created_at: "2026-09-01T12:00:00Z" }))).toBe("2026-09-01");
+  });
+
+  it("tolerates a junk timestamp", () => {
+    expect(formDateFor(lead({ submitted_at: "ontem", created_at: "também não" }))).toBeNull();
+  });
+});
+
+describe("qualifiedLeads", () => {
+  const rows = [
+    lead({ id: "q-velha", board_column: "qualificado", submitted_at: "2026-01-10T15:00:00Z", updated_at: "2026-01-10T15:00:00Z" }),
+    lead({ id: "q-noite", board_column: "qualificado", submitted_at: "2026-09-15T01:00:00Z" }),
+    lead({ id: "q-hoje", board_column: "qualificado", submitted_at: "2026-09-15T14:00:00Z" }),
+    lead({ id: "agendada", board_column: "agendado", submitted_at: "2026-09-15T14:00:00Z" }),
+    lead({ id: "funil", stage: "qualificado", submitted_at: "2026-09-15T14:00:00Z" }),
+  ];
+
+  it("lists every lead in the Qualificado column, newest form first, with no 14-day cut", () => {
+    expect(qualifiedLeads(rows, null).map((r) => r.id)).toEqual(["q-hoje", "q-noite", "q-velha"]);
+  });
+
+  it("ignores the funnel stage — only the board column counts", () => {
+    expect(qualifiedLeads(rows, null).map((r) => r.id)).not.toContain("funil");
+  });
+
+  it("filters by the São Paulo day of the form", () => {
+    expect(qualifiedLeads(rows, "2026-09-15").map((r) => r.id)).toEqual(["q-hoje"]);
+    expect(qualifiedLeads(rows, "2026-09-14").map((r) => r.id)).toEqual(["q-noite"]);
+    expect(qualifiedLeads(rows, "2026-09-16")).toEqual([]);
   });
 });
