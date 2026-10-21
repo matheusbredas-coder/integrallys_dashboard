@@ -22,7 +22,6 @@ const LABEL: Record<ConnectionState, string> = {
  */
 export function WhatsAppPairingCard({ initialState }: { initialState: ConnectionState }) {
   const [state, setState] = useState<ConnectionState>(initialState);
-  const [phone, setPhone] = useState(CLINIC_PHONE);
   const [result, setResult] = useState<PairingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -45,7 +44,7 @@ export function WhatsAppPairingCard({ initialState }: { initialState: Connection
   function generate(withNumber: boolean) {
     setError(null);
     startTransition(async () => {
-      const res = await generatePairing(withNumber ? phone : "");
+      const res = await generatePairing(withNumber ? CLINIC_PHONE : "");
       if ("error" in res) { setError(res.error); return; }
       setState(res.state);
       setResult(res.state === "open" ? null : res);
@@ -87,18 +86,8 @@ export function WhatsAppPairingCard({ initialState }: { initialState: Connection
               {pending ? "Gerando…" : "Gerar QR code"}
             </button>
             <span className="muted" style={{ fontSize: 13 }}>ou</span>
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              inputMode="tel"
-              aria-label="Número do WhatsApp da clínica"
-              style={{
-                background: "var(--panel-hi)", border: "1px solid var(--line)", borderRadius: 12,
-                padding: "10px 12px", color: "var(--txt)", fontSize: 14, fontFamily: "inherit", width: 170,
-              }}
-            />
             <button type="button" onClick={() => generate(true)} disabled={pending} style={ghost}>
-              Gerar código de pareamento
+              Gerar código de pareamento ({CLINIC_PHONE})
             </button>
           </div>
 
