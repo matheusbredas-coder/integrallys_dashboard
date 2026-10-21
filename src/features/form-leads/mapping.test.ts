@@ -334,6 +334,10 @@ describe("resolveSource", () => {
     expect(resolveSource({ source: "site_form" })).toBe("site_form");
   });
 
+  it("reconhece o quiz de avaliação do site", () => {
+    expect(resolveSource({ source: "site_quiz" })).toBe("site_quiz");
+  });
+
   // O n8n existente não manda `source` nenhum; ele tem que continuar caindo no Meta.
   it("sem origem no corpo, continua sendo lead do Meta", () => {
     expect(resolveSource({})).toBe("meta_instant_form");

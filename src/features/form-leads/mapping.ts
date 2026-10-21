@@ -257,10 +257,14 @@ export function resolveExternalId(mapped: string | null, body: unknown): string 
  * their number into the site would be indistinguishable from a paid Meta lead, and every
  * report that splits cost by origin would credit the ads for it.
  *
+ * The qualification quiz at integrallysestetica.com.br/avaliacao posts `source: "site_quiz"`,
+ * with every answer as its own field (kept in `raw`) and `Qualificação` = "quente" | "fria".
+ *
  * Allow-listed rather than free text — this is a machine-to-machine field, and a typo'd
  * value would quietly create a third "origin" nobody is filtering on.
  */
-const SOURCES = new Set(["meta_instant_form", "site_form"]);
+export const SITE_QUIZ_SOURCE = "site_quiz";
+const SOURCES = new Set(["meta_instant_form", "site_form", SITE_QUIZ_SOURCE]);
 
 export function resolveSource(body: unknown): string {
   const raw = isPlainObject(body) && typeof body.source === "string" ? body.source.trim() : "";

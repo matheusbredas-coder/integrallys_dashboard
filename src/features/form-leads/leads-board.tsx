@@ -67,6 +67,7 @@ import {
 } from "./types";
 import { LeadNotesDrawer } from "./lead-notes-drawer";
 import { WHATSAPP_AD_SOURCE } from "./whatsapp-ad";
+import { SITE_QUIZ_SOURCE } from "./mapping";
 import { BoardDialog, type BoardDialogRequest } from "./board-dialog";
 
 /**
@@ -819,6 +820,44 @@ function BoardCard({
         </span>
       )}
 
+      {/* She answered the qualification quiz on the site. The tooltip carries the answers
+          the caller wants before dialling; "fria" = up to R$ 100/month, the only answer the
+          quiz treats as cold (it never reaches Meta as a Lead). */}
+      {row.source === SITE_QUIZ_SOURCE && (
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          <span
+            title={quizSummary(row.raw)}
+            style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              color: "#b8922a",
+              background: "color-mix(in srgb, #e3bc3c 16%, transparent)",
+              border: "1px solid color-mix(in srgb, #e3bc3c 40%, transparent)",
+              borderRadius: 6,
+              padding: "1px 6px",
+            }}
+          >
+            veio pelo quiz
+          </span>
+          {row.raw?.["Qualificação"] === "fria" && (
+            <span
+              title="Marcou até R$ 100 por mês"
+              style={{
+                fontSize: 10.5,
+                fontWeight: 700,
+                color: "#7a8699",
+                background: "color-mix(in srgb, #7a8699 14%, transparent)",
+                border: "1px solid color-mix(in srgb, #7a8699 32%, transparent)",
+                borderRadius: 6,
+                padding: "1px 6px",
+              }}
+            >
+              fria
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Which try she is on, and the button that adds the next one — the two things
           that belong together, on their own line above "Ligar"/"Notas".
 
@@ -905,3 +944,11 @@ function BoardCard({
   );
 }
 
+/** The quiz answers worth seeing before a call, one per line, for the card's tooltip. */
+function quizSummary(raw: Record<string, string> | null | undefined): string | undefined {
+  if (!raw) return undefined;
+  const lines = ["Cidade", "Vem toda semana", "Investimento por mês", "Quando quer começar", "O que mais incomoda", "Regiões"]
+    .filter((k) => raw[k])
+    .map((k) => `${k}: ${raw[k]}`);
+  return lines.length ? lines.join("\n") : undefined;
+}
